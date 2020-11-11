@@ -741,7 +741,6 @@ mlx5_dev_spawn(struct rte_device *dpdk_dev,
 	int own_domain_id = 0;
 	uint16_t port_id;
 	unsigned int i;
-	uint32_t log_obj_size;
 #ifdef HAVE_MLX5DV_DR_DEVX_PORT
 	struct mlx5dv_devx_port devx_port = { .comp_mask = 0 };
 #endif
@@ -1201,7 +1200,9 @@ err_secondary:
 				"required for coalescing is %d bytes",
 				config->hca_attr.lro_min_mss_size);
 		}
-#if defined(HAVE_MLX5DV_DR) && defined(HAVE_MLX5_DR_CREATE_ACTION_FLOW_METER)
+#if defined(HAVE_MLX5DV_DR) && \
+	(defined(HAVE_MLX5_DR_CREATE_ACTION_FLOW_METER) || \
+	 defined(HAVE_MLX5_DR_CREATE_ACTION_ASO))
 		if (config->hca_attr.qos.sup &&
 		    config->hca_attr.qos.flow_meter_old &&
 		    config->dv_flow_en) {
@@ -1238,7 +1239,7 @@ err_secondary:
 		}
 		if (config->hca_attr.qos.sup &&
 			config->hca_attr.qos.flow_meter_aso_sup) {
-			log_obj_size =
+			uint32_t log_obj_size =
 				rte_log2_u32(MLX5_ASO_MTRS_PER_POOL >> 1);
 			if (log_obj_size >=
 			config->hca_attr.qos.log_meter_aso_granularity &&

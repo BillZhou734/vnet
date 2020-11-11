@@ -4887,9 +4887,11 @@ mlx5_flow_validate_action_meter(struct rte_eth_dev *dev,
 		return rte_flow_error_set(error, EINVAL,
 					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
 					  "Meter not found");
-	if (fm->ref_cnt && (!(fm->transfer == attr->transfer ||
+	/* aso meter can always be shared by different domains */
+	if (fm->ref_cnt && !priv->sh->meter_aso_en &&
+	    !(fm->transfer == attr->transfer ||
 	      (!fm->ingress && !attr->ingress && attr->egress) ||
-	      (!fm->egress && !attr->egress && attr->ingress))))
+	      (!fm->egress && !attr->egress && attr->ingress)))
 		return rte_flow_error_set(error, EINVAL,
 					  RTE_FLOW_ERROR_TYPE_ACTION, NULL,
 					  "Flow attributes are either invalid "
@@ -6058,6 +6060,8 @@ flow_dv_mtr_alloc(struct rte_eth_dev *dev)
 	struct mlx5_aso_mtr *mtr_free = NULL;
 	struct mlx5_aso_mtr_pools_mng *mtrmng = priv->sh->mtrmng;
 	struct mlx5_aso_mtr_pool *pool;
+	struct rte_flow_error error;
+	uint8_t reg_id;
 	uint32_t mtr_idx = 0;
 
 	if (!priv->config.devx) {
@@ -6080,6 +6084,20 @@ flow_dv_mtr_alloc(struct rte_eth_dev *dev)
 					struct mlx5_aso_mtr_pool,
 					mtrs[mtr_free->offset]);
 	mtr_idx = MLX5_MAKE_MTR_IDX(pool->index, mtr_free->offset);
+	if (!mtr_free->fm.meter_action) {
+		reg_id = mlx5_flow_get_reg_id(dev, MLX5_MTR_COLOR, 0, &error);
+		mtr_free->fm.meter_action =
+			mlx5_glue->dv_create_flow_action_aso
+						(priv->sh->rx_domain,
+						 pool->devx_obj->obj,
+						 mtr_free->offset,
+						 (1 << MLX5_FLOW_COLOR_GREEN),
+						 reg_id - REG_C_0);
+		if (!mtr_free->fm.meter_action) {
+			flow_dv_aso_mtr_release_to_pool(dev, mtr_idx);
+			return 0;
+		}
+	}
 	return mtr_idx;
 }
 
@@ -11579,7 +11597,7 @@ flow_dv_translate(struct rte_eth_dev *dev,
 					NULL, "Failed to get meter in flow.");
 			/* Set the meter action. */
 			dev_flow->dv.actions[actions_n++] =
-				wks->fm->mfts->meter_action;
+				wks->fm->meter_action;
 			action_flags |= MLX5_FLOW_ACTION_METER;
 			break;
 		case RTE_FLOW_ACTION_TYPE_SET_IPV4_DSCP:
@@ -12688,7 +12706,7 @@ flow_dv_destroy(struct rte_eth_dev *dev, struct rte_flow *flow)
 	if (flow->meter) {
 		fm = flow_dv_meter_find_by_idx(priv, flow->meter);
 		if (fm)
-			mlx5_flow_meter_detach(fm);
+			mlx5_flow_meter_detach(priv, fm);
 		flow->meter = 0;
 	}
 	if (flow->age)
