@@ -741,6 +741,7 @@ mlx5_dev_spawn(struct rte_device *dpdk_dev,
 	int own_domain_id = 0;
 	uint16_t port_id;
 	unsigned int i;
+	uint32_t log_obj_size;
 #ifdef HAVE_MLX5DV_DR_DEVX_PORT
 	struct mlx5dv_devx_port devx_port = { .comp_mask = 0 };
 #endif
@@ -1233,6 +1234,22 @@ err_secondary:
 					config->hca_attr.qos.flow_meter;
 				DRV_LOG(DEBUG, "The REG_C meter uses is %d",
 					priv->mtr_color_reg);
+			}
+		}
+		if (config->hca_attr.qos.sup &&
+			config->hca_attr.qos.flow_meter_aso_sup) {
+			log_obj_size =
+				rte_log2_u32(MLX5_ASO_MTRS_PER_POOL >> 1);
+			if (log_obj_size >=
+			config->hca_attr.qos.log_meter_aso_granularity &&
+			log_obj_size <=
+			config->hca_attr.qos.log_meter_aso_max_alloc) {
+				sh->meter_aso_en = 1;
+				err = mlx5_aso_flow_mtrs_mng_init(priv);
+				if (err) {
+					err = -err;
+					goto error;
+				}
 			}
 		}
 #endif
