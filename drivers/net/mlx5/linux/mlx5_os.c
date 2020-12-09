@@ -316,7 +316,13 @@ mlx5_alloc_shared_dr(struct mlx5_priv *priv)
 	}
 	sh->tx_domain = domain;
 #ifdef HAVE_MLX5DV_DR_ESWITCH
+	sh->esw_drop_action = mlx5_glue->dr_create_flow_action_drop();
 	if (priv->config.dv_esw_en) {
+		if (!sh->esw_drop_action) {
+			DRV_LOG(ERR, "Failed to create eswitch drop action");
+			err = errno;
+			goto error;
+		}
 		domain  = mlx5_glue->dr_create_domain
 			(sh->ctx, MLX5DV_DR_DOMAIN_TYPE_FDB);
 		if (!domain) {
@@ -325,7 +331,6 @@ mlx5_alloc_shared_dr(struct mlx5_priv *priv)
 			goto error;
 		}
 		sh->fdb_domain = domain;
-		sh->esw_drop_action = mlx5_glue->dr_create_flow_action_drop();
 	}
 #endif
 	if (!sh->tunnel_hub)
@@ -1225,7 +1230,7 @@ err_secondary:
 							      - 1 + REG_C_0;
 				priv->mtr_en = 1;
 				priv->mtr_reg_share =
-				      config->hca_attr.qos.flow_meter;
+					config->hca_attr.qos.flow_meter;
 				DRV_LOG(DEBUG, "The REG_C meter uses is %d",
 					priv->mtr_color_reg);
 			}
