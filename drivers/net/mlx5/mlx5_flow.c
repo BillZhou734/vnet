@@ -3360,17 +3360,51 @@ flow_drv_destroy(struct rte_eth_dev *dev, struct rte_flow *flow)
 }
 
 /**
+ * Flow driver find RSS policy tbl API. This abstracts calling driver
+ * specific functions. Parent flow (rte_flow) should have driver
+ * type (drv_type). It will find the RSS policy table that has the rss_desc.
+ *
+ * @param[in] dev
+ *   Pointer to Ethernet device.
+ * @param[in, out] flow
+ *   Pointer to flow structure.
+ * @param[in] policy_id
+ *   The policy id of a meter.
+ * @param[in] rss_desc
+ *   Pointer to rss_desc
+ */
+static struct mlx5_flow_meter_sub_policy *
+flow_drv_meter_sub_policy_prepare(struct rte_eth_dev *dev,
+		struct rte_flow *flow,
+		uint32_t policy_id,
+		struct mlx5_flow_rss_desc *rss_desc[MLX5_MTR_RTE_COLORS])
+{
+	const struct mlx5_flow_driver_ops *fops;
+	enum mlx5_flow_drv_type type = flow->drv_type;
+
+	MLX5_ASSERT(type > MLX5_FLOW_TYPE_MIN && type < MLX5_FLOW_TYPE_MAX);
+	fops = flow_get_drv_ops(type);
+	return fops->meter_sub_policy_prepare(dev, policy_id, rss_desc);
+}
+
+/**
  * Get RSS action from the action list.
  *
+ * @param[in] dev
+ *   Pointer to Ethernet device.
  * @param[in] actions
  *   Pointer to the list of actions.
+ * @param[in] flow
+ *   Parent flow structure pointer.
  *
  * @return
  *   Pointer to the RSS action if exist, else return NULL.
  */
 static const struct rte_flow_action_rss*
-flow_get_rss_action(const struct rte_flow_action actions[])
+flow_get_rss_action(struct rte_eth_dev *dev,
+		    const struct rte_flow_action actions[])
 {
+	struct mlx5_priv *priv = dev->data->dev_private;
 	const struct rte_flow_action_rss *rss = NULL;
 
 	for (; actions->type != RTE_FLOW_ACTION_TYPE_END; actions++) {
@@ -3386,6 +3420,23 @@ flow_get_rss_action(const struct rte_flow_action actions[])
 			for (; act->type != RTE_FLOW_ACTION_TYPE_END; act++)
 				if (act->type == RTE_FLOW_ACTION_TYPE_RSS)
 					rss = act->conf;
+			break;
+		}
+		case RTE_FLOW_ACTION_TYPE_METER:
+		{
+			uint32_t mtr_idx;
+			struct mlx5_flow_meter_info *fm;
+			struct mlx5_flow_meter_policy *policy;
+			const struct rte_flow_action_meter *mtr = actions->conf;
+
+			fm = mlx5_flow_meter_find(priv, mtr->mtr_id, &mtr_idx);
+			if (fm) {
+				policy = mlx5_flow_meter_policy_find(dev,
+						fm->policy_id, NULL);
+				if (policy && policy->is_rss)
+					rss =
+				policy->act_cnt[RTE_COLOR_GREEN].rss->conf;
+			}
 			break;
 		}
 		default:
@@ -3687,12 +3738,63 @@ flow_parse_metadata_split_actions_info(const struct rte_flow_action actions[],
 }
 
 /**
+ * Check if the action will change packet.
+ *
+ * @param[in] type
+ *   action type.
+ *
+ * @return
+ *   true if action will change packet, false otherwise.
+ */
+static bool flow_check_modify_action_type(enum rte_flow_action_type type)
+{
+	switch (type) {
+	case RTE_FLOW_ACTION_TYPE_SET_MAC_SRC:
+	case RTE_FLOW_ACTION_TYPE_SET_MAC_DST:
+	case RTE_FLOW_ACTION_TYPE_SET_IPV4_SRC:
+	case RTE_FLOW_ACTION_TYPE_SET_IPV4_DST:
+	case RTE_FLOW_ACTION_TYPE_SET_IPV6_SRC:
+	case RTE_FLOW_ACTION_TYPE_SET_IPV6_DST:
+	case RTE_FLOW_ACTION_TYPE_SET_TP_SRC:
+	case RTE_FLOW_ACTION_TYPE_SET_TP_DST:
+	case RTE_FLOW_ACTION_TYPE_DEC_TTL:
+	case RTE_FLOW_ACTION_TYPE_SET_TTL:
+	case RTE_FLOW_ACTION_TYPE_INC_TCP_SEQ:
+	case RTE_FLOW_ACTION_TYPE_DEC_TCP_SEQ:
+	case RTE_FLOW_ACTION_TYPE_INC_TCP_ACK:
+	case RTE_FLOW_ACTION_TYPE_DEC_TCP_ACK:
+	case RTE_FLOW_ACTION_TYPE_SET_IPV4_DSCP:
+	case RTE_FLOW_ACTION_TYPE_SET_IPV6_DSCP:
+	case RTE_FLOW_ACTION_TYPE_FLAG:
+	case RTE_FLOW_ACTION_TYPE_MARK:
+	case RTE_FLOW_ACTION_TYPE_SET_META:
+	case RTE_FLOW_ACTION_TYPE_SET_TAG:
+	case RTE_FLOW_ACTION_TYPE_OF_POP_VLAN:
+	case RTE_FLOW_ACTION_TYPE_OF_PUSH_VLAN:
+	case RTE_FLOW_ACTION_TYPE_OF_SET_VLAN_VID:
+	case RTE_FLOW_ACTION_TYPE_OF_SET_VLAN_PCP:
+	case RTE_FLOW_ACTION_TYPE_VXLAN_ENCAP:
+	case RTE_FLOW_ACTION_TYPE_VXLAN_DECAP:
+	case RTE_FLOW_ACTION_TYPE_NVGRE_ENCAP:
+	case RTE_FLOW_ACTION_TYPE_NVGRE_DECAP:
+	case RTE_FLOW_ACTION_TYPE_RAW_ENCAP:
+	case RTE_FLOW_ACTION_TYPE_RAW_DECAP:
+	case RTE_FLOW_ACTION_TYPE_MODIFY_FIELD:
+		return true;
+	default:
+		return false;
+	}
+}
+
+/**
  * Check meter action from the action list.
  *
  * @param[in] actions
  *   Pointer to the list of actions.
  * @param[out] has_mtr
  *   Pointer to the meter exist flag.
+ * @param[out] has_modify
+ *   Pointer to the flag showing there's packet change action.
  * @param[out] meter_id
  *   Pointer to the meter id.
  *
@@ -3701,8 +3803,7 @@ flow_parse_metadata_split_actions_info(const struct rte_flow_action actions[],
  */
 static int
 flow_check_meter_action(const struct rte_flow_action actions[],
-			bool *has_mtr,
-			uint32_t *meter_id)
+			bool *has_mtr, bool *has_modify, uint32_t *meter_id)
 {
 	const struct rte_flow_action_meter *mtr = NULL;
 	int actions_n = 0;
@@ -3719,6 +3820,9 @@ flow_check_meter_action(const struct rte_flow_action actions[],
 		default:
 			break;
 		}
+		if (!*has_mtr)
+			*has_modify |=
+				flow_check_modify_action_type(actions->type);
 		actions_n++;
 	}
 	/* Count RTE_FLOW_ACTION_TYPE_END. */
@@ -4362,6 +4466,112 @@ flow_create_split_inner(struct rte_eth_dev *dev,
 }
 
 /**
+ * Get the table id of meter policy table.
+ *
+ * @param[in] dev
+ *   Pointer to Ethernet device.
+ * @param[in] flow
+ *   Parent flow structure pointer.
+ * @param[in] policy_id;
+ *   Meter Policy id.
+ * @param[in] attr
+ *   Flow rule attributes.
+ * @param[in] items
+ *   Pattern specification (list terminated by the END pattern item).
+ * @param[out] error
+ *   Perform verbose error reporting if not NULL.
+ *
+ * @return
+ *   The table id, 0 otherwise and rte_errno is set.
+ */
+static uint32_t
+get_sub_policy_tbl_id(struct rte_eth_dev *dev,
+		      struct rte_flow *flow,
+		      uint32_t policy_id,
+		      const struct rte_flow_attr *attr,
+		      const struct rte_flow_item items[],
+		      struct rte_flow_error *error)
+{
+	uint32_t policy_tbl_id = 0;
+	struct mlx5_flow_meter_policy *policy;
+
+	policy = mlx5_flow_meter_policy_find(dev, policy_id, NULL);
+	if (!policy) {
+		rte_flow_error_set(error, EINVAL,
+				   RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+				   "Failed to find Meter Policy.");
+		goto exit;
+	}
+	if (policy->is_rss) {
+		struct mlx5_flow_workspace *wks =
+				mlx5_flow_get_thread_workspace();
+		struct mlx5_flow_rss_desc rss_desc_v[MLX5_MTR_RTE_COLORS];
+		struct mlx5_flow_rss_desc *rss_desc[MLX5_MTR_RTE_COLORS] = {0};
+		struct mlx5_flow_meter_sub_policy *sub_policy = NULL;
+		uint32_t i;
+
+		MLX5_ASSERT(wks);
+		/** This is a tmp dev_flow,
+		 *  no need to register any matcher for it in translate.
+		 */
+		wks->skip_matcher_reg = 1;
+		for (i = 0; i < MLX5_MTR_RTE_COLORS; i++) {
+			struct mlx5_flow dev_flow = {0};
+			struct mlx5_flow_handle dev_handle = {{0}};
+			const void *rss_act = policy->act_cnt[i].rss->conf;
+			struct rte_flow_action rss_actions[2] = {
+				[0] = {
+					.type = RTE_FLOW_ACTION_TYPE_RSS,
+					.conf = rss_act
+				},
+				[1] = {
+					.type = RTE_FLOW_ACTION_TYPE_END,
+					.conf = NULL
+				}
+			};
+
+			dev_flow.handle = &dev_handle;
+			dev_flow.ingress = attr->ingress;
+			dev_flow.flow = flow;
+			dev_flow.external = 0;
+#ifdef HAVE_IBV_FLOW_DV_SUPPORT
+			dev_flow.dv.transfer = attr->transfer;
+#endif
+			/* Translate RSS action to get rss hash fields. */
+			if (flow_drv_translate(dev, &dev_flow, attr,
+						items, rss_actions, error))
+				goto exit;
+			rss_desc_v[i] = wks->rss_desc;
+			rss_desc_v[i].key_len = MLX5_RSS_HASH_KEY_LEN;
+			rss_desc_v[i].hash_fields = dev_flow.hash_fields;
+			rss_desc_v[i].queue_num = rss_desc_v[i].hash_fields ?
+						  rss_desc_v[i].queue_num : 1;
+			rss_desc[i] = &rss_desc_v[i];
+		}
+		sub_policy = flow_drv_meter_sub_policy_prepare(dev,
+						flow, policy_id, rss_desc);
+		if (!sub_policy) {
+			rte_flow_error_set(error, EINVAL,
+				RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+				"Failed to get meter RSS policy table.");
+			goto exit;
+		}
+		policy_tbl_id = sub_policy->idx;
+	} else {
+		enum mlx5_meter_domain mtr_domain =
+			attr->transfer ? MLX5_MTR_DOMAIN_TRANSFER :
+				attr->egress ? MLX5_MTR_DOMAIN_EGRESS :
+					MLX5_MTR_DOMAIN_INGRESS;
+		policy_tbl_id =
+			policy->sub_policys[mtr_domain][0]->idx;
+	}
+exit:
+	return policy_tbl_id;
+}
+
+#define MLX5_MTR_PRE_TAG_NUM 2
+
+/**
  * Split the meter flow.
  *
  * As meter flow will split to three sub flow, other than meter
@@ -4391,13 +4601,15 @@ flow_create_split_inner(struct rte_eth_dev *dev,
  *   Suffix flow actions.
  * @param[out] actions_pre
  *   Prefix flow actions.
+ * @param[out] mtr_flow_id
+ *   Pointer to meter flow id.
  * @param[out] error
  *   Perform verbose error reporting if not NULL.
  *
  * @return
- *   The flow id, 0 otherwise and rte_errno is set.
+ *   0 on success, a negative errno value otherwise and rte_errno is set.
  */
-static uint32_t
+static int
 flow_meter_split_prep(struct rte_eth_dev *dev,
 		      struct rte_flow *flow,
 		      struct mlx5_flow_meter_info *fm,
@@ -4407,6 +4619,7 @@ flow_meter_split_prep(struct rte_eth_dev *dev,
 		      const struct rte_flow_action actions[],
 		      struct rte_flow_action actions_sfx[],
 		      struct rte_flow_action actions_pre[],
+		      uint32_t *mtr_flow_id,
 		      struct rte_flow_error *error)
 {
 	struct mlx5_priv *priv = dev->data->dev_private;
@@ -4420,7 +4633,7 @@ flow_meter_split_prep(struct rte_eth_dev *dev,
 	uint32_t tag_id = 0;
 	bool copy_vlan = false;
 	struct rte_flow_action *hw_mtr_action;
-	struct rte_flow_action_jump *jump_data;
+	struct mlx5_rte_flow_item_mtr_jump *jump_data;
 	struct rte_flow_action *action_pre_head = NULL;
 	bool mtr_first = priv->sh->meter_aso_en &&
 			 (attr->egress ||
@@ -4429,8 +4642,6 @@ flow_meter_split_prep(struct rte_eth_dev *dev,
 	uint8_t mtr_reg_bits = priv->mtr_reg_share ?
 				MLX5_MTR_IDLE_BITS_IN_COLOR_REG : MLX5_REG_BITS;
 	uint8_t flow_id_bits = 0;
-	int shift;
-	uint32_t flow_id_val = 0;
 
 	/* For ASO meter, meter must be before tag in TX direction. */
 	if (mtr_first) {
@@ -4474,7 +4685,9 @@ flow_meter_split_prep(struct rte_eth_dev *dev,
 			break;
 		}
 		if (!action_cur)
-			action_cur = actions_sfx++;
+			action_cur =
+				(fm->policy_id != RTE_MTR_DEFAULT_POLICY_ID) ?
+					actions_pre++ : actions_sfx++;
 		memcpy(action_cur, actions, sizeof(struct rte_flow_action));
 	}
 	/* Add end action to the actions. */
@@ -4483,37 +4696,56 @@ flow_meter_split_prep(struct rte_eth_dev *dev,
 		/** For ASO meter, need to add an extra jump action explicitly,
 		 *  to jump from meter to policer table.
 		 */
+		uint32_t sub_policy_tbl_id = 0;
+
+		if (fm->policy_id != RTE_MTR_DEFAULT_POLICY_ID) {
+			sub_policy_tbl_id =
+				get_sub_policy_tbl_id(dev, flow, fm->policy_id,
+						      attr, items, error);
+			if (!sub_policy_tbl_id)
+				return -rte_errno;
+		}
 		hw_mtr_action = actions_pre;
-		hw_mtr_action->type = RTE_FLOW_ACTION_TYPE_JUMP;
+		hw_mtr_action->type = (enum rte_flow_action_type)
+				      MLX5_RTE_FLOW_ACTION_TYPE_MTR_JUMP;
 		actions_pre++;
 		actions_pre->type = RTE_FLOW_ACTION_TYPE_END;
 		actions_pre++;
-		jump_data = (struct rte_flow_action_jump *)actions_pre;
-		jump_data->group = attr->transfer ?
+		jump_data = (struct mlx5_rte_flow_item_mtr_jump *)actions_pre;
+		jump_data->table_group.group = attr->transfer ?
 				(MLX5_FLOW_TABLE_LEVEL_POLICY - 1) :
 				 MLX5_FLOW_TABLE_LEVEL_POLICY;
+		jump_data->table_id = sub_policy_tbl_id;
 		hw_mtr_action->conf = jump_data;
 		actions_pre = (struct rte_flow_action *)(jump_data + 1);
 	} else {
 		actions_pre->type = RTE_FLOW_ACTION_TYPE_END;
 		actions_pre++;
 	}
-	/* Generate meter flow_id only if support multiple flows per meter. */
-	mlx5_ipool_malloc(fm->flow_ipool, &tag_id);
-	if (!tag_id)
-		return rte_flow_error_set(error, ENOMEM,
-				RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
-				"Failed to allocate meter flow id.");
-	flow_id_bits = MLX5_REG_BITS - __builtin_clz(tag_id - 1);
-	flow_id_bits = flow_id_bits ? flow_id_bits : 1;
-	if ((flow_id_bits + priv->sh->mtrmng->max_mtr_bits) > mtr_reg_bits) {
-		mlx5_ipool_free(fm->flow_ipool, tag_id);
-		return rte_flow_error_set(error, EINVAL,
-				RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
-				"Meter flow id exceeds max limit.");
+	MLX5_ASSERT(tag_action);
+	if (!mtr_flow_id) {
+		tag_action->type = RTE_FLOW_ACTION_TYPE_VOID;
+		goto exit;
 	}
-	if (flow_id_bits > priv->sh->mtrmng->max_mtr_flow_bits)
-		priv->sh->mtrmng->max_mtr_flow_bits = flow_id_bits;
+	/* Only Non-termination Policy Meter creates mtr flow id. */
+	if (fm->policy_id == RTE_MTR_DEFAULT_POLICY_ID) {
+		mlx5_ipool_malloc(fm->flow_ipool, &tag_id);
+		if (!tag_id)
+			return rte_flow_error_set(error, ENOMEM,
+					RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+					"Failed to allocate meter flow id.");
+		flow_id_bits = MLX5_REG_BITS - __builtin_clz(tag_id - 1);
+		flow_id_bits = flow_id_bits ? flow_id_bits : 1;
+		if ((flow_id_bits + priv->sh->mtrmng->max_mtr_bits) >
+		    mtr_reg_bits) {
+			mlx5_ipool_free(fm->flow_ipool, tag_id);
+			return rte_flow_error_set(error, EINVAL,
+					RTE_FLOW_ERROR_TYPE_UNSPECIFIED, NULL,
+					"Meter flow id exceeds max limit.");
+		}
+		if (flow_id_bits > priv->sh->mtrmng->max_mtr_flow_bits)
+			priv->sh->mtrmng->max_mtr_flow_bits = flow_id_bits;
+	}
 	/* Prepare the suffix subflow items. */
 	tag_item = sfx_items++;
 	for (; items->type != RTE_FLOW_ITEM_TYPE_END; items++) {
@@ -4543,7 +4775,6 @@ flow_meter_split_prep(struct rte_eth_dev *dev,
 	sfx_items->type = RTE_FLOW_ITEM_TYPE_END;
 	sfx_items++;
 	/* Build tag actions and items for meter_id/meter flow_id. */
-	assert(tag_action);
 	set_tag = (struct mlx5_rte_flow_action_set_tag *)actions_pre;
 	tag_item_spec = (struct mlx5_rte_flow_item_tag *)sfx_items;
 	tag_item_mask = tag_item_spec + 1;
@@ -4554,14 +4785,19 @@ flow_meter_split_prep(struct rte_eth_dev *dev,
 		.length = mtr_reg_bits,
 		.data = flow->meter,
 	};
-	/*
-	 * The color Reg bits used by flow_id are growing from
-	 * msb to lsb, so must do bit reverse for flow_id val in RegC.
-	 */
-	for (shift = 0; shift < flow_id_bits; shift++)
-		flow_id_val = (flow_id_val << 1) |
-			      (((tag_id - 1) >> shift) & 0x1);
-	set_tag->data |= flow_id_val << (mtr_reg_bits - flow_id_bits);
+	if (tag_id) {
+		int shift;
+		uint32_t flow_id_val = 0;
+
+		/*
+		 * The color Reg bits used by flow_id are growing from
+		 * msb to lsb, so must do bit reverse for flow_id val in RegC.
+		 */
+		for (shift = 0; shift < flow_id_bits; shift++)
+			flow_id_val = (flow_id_val << 1) |
+					(((tag_id - 1) >> shift) & 0x1);
+		set_tag->data |= flow_id_val << (mtr_reg_bits - flow_id_bits);
+	}
 	tag_item_spec->id = set_tag->id;
 	tag_item_spec->data = set_tag->data << mtr_id_offset;
 	tag_item_mask->data = UINT32_MAX << mtr_id_offset;
@@ -4573,7 +4809,10 @@ flow_meter_split_prep(struct rte_eth_dev *dev,
 	tag_item->spec = tag_item_spec;
 	tag_item->last = NULL;
 	tag_item->mask = tag_item_mask;
-	return tag_id;
+exit:
+	if (mtr_flow_id)
+		*mtr_flow_id = tag_id;
+	return 0;
 }
 
 /**
@@ -5238,6 +5477,57 @@ exit:
 }
 
 /**
+ * Create the Termination Policy Meter drop flow.
+ *
+ * @param dev
+ *   Pointer to Ethernet device.
+ * @param[in] flow
+ *   Parent flow structure pointer.
+ * @param[in] attr
+ *   Flow rule attributes.
+ * @param[in] items
+ *   Pattern specification (list terminated by the END pattern item).
+ * @param[in] flow_split_info
+ *   Pointer to flow split info structure.
+ * @param[in] fm
+ *   Pointer to flow meter structure.
+ * @param[out] error
+ *   Perform verbose error reporting if not NULL.
+ * @return
+ *   0 on success, negative value otherwise
+ */
+static uint32_t
+flow_meter_create_drop_flow_with_org_pattern(struct rte_eth_dev *dev,
+			struct rte_flow *flow,
+			const struct rte_flow_attr *attr,
+			const struct rte_flow_item items[],
+			struct mlx5_flow_split_info *flow_split_info,
+			struct mlx5_flow_meter_info *fm,
+			struct rte_flow_error *error)
+{
+	struct mlx5_flow *dev_flow = NULL;
+	struct rte_flow_attr drop_attr = *attr;
+	struct rte_flow_action drop_actions[3] = {{0}};
+	struct mlx5_flow_split_info drop_split_info = *flow_split_info;
+
+	MLX5_ASSERT(fm->drop_cnt);
+	drop_actions[0].type =
+		MLX5_RTE_FLOW_ACTION_TYPE_MTR_COUNT;
+	drop_actions[0].conf =
+		(void *)(uintptr_t)fm->drop_cnt;
+	drop_actions[1].type =
+		RTE_FLOW_ACTION_TYPE_DROP;
+	drop_actions[2].type =
+		RTE_FLOW_ACTION_TYPE_END;
+	drop_split_info.external = false;
+	drop_split_info.skip_scale |= 1 << MLX5_SCALE_FLOW_GROUP_BIT;
+	drop_attr.group = MLX5_FLOW_TABLE_LEVEL_METER_DROP;
+	return flow_create_split_inner(dev, flow, &dev_flow,
+				&drop_attr, items, drop_actions,
+				&drop_split_info, error);
+}
+
+/**
  * The splitting for meter feature.
  *
  * - The meter flow will be split to two flows as prefix and
@@ -5281,10 +5571,13 @@ flow_create_split_meter(struct rte_eth_dev *dev,
 	struct mlx5_flow *dev_flow = NULL;
 	struct rte_flow_attr sfx_attr = *attr;
 	struct mlx5_flow_meter_info *fm = NULL;
+	uint8_t skip_scale_restore;
 	bool has_mtr = false;
-	uint32_t meter_id;
+	bool has_modify = false;
+	bool set_mtr_reg = true;
+	uint32_t meter_id = 0;
 	uint32_t mtr_idx = 0;
-	uint32_t mtr_tag_id = 0;
+	uint32_t mtr_flow_id = 0;
 	size_t act_size;
 	size_t item_size;
 	int actions_n = 0;
@@ -5292,7 +5585,7 @@ flow_create_split_meter(struct rte_eth_dev *dev,
 
 	if (priv->mtr_en)
 		actions_n = flow_check_meter_action(actions, &has_mtr,
-						    &meter_id);
+						    &has_modify, &meter_id);
 	if (has_mtr) {
 		if (flow->meter) {
 			fm = flow_dv_meter_find_by_idx(priv, flow->meter);
@@ -5312,7 +5605,18 @@ flow_create_split_meter(struct rte_eth_dev *dev,
 				return -rte_errno;
 			flow->meter = mtr_idx;
 		}
+		MLX5_ASSERT(wks);
 		wks->fm = fm;
+		/*
+		 * If it's Termination Policy Meter, and
+		 * 1. There's no action in flow to change
+		 *    packet (modify/encap/decap etc.), OR
+		 * 2. No drop count needed for this meter.
+		 * no need to use regC to save meter id anymore.
+		 */
+		if (fm->policy_id != RTE_MTR_DEFAULT_POLICY_ID &&
+		    (!has_modify || !fm->drop_cnt))
+			set_mtr_reg = false;
 		/* Prefix actions: meter, decap, encap, tag, jump, end. */
 		act_size = sizeof(struct rte_flow_action) * (actions_n + 6) +
 			   sizeof(struct mlx5_rte_flow_action_set_tag);
@@ -5329,27 +5633,48 @@ flow_create_split_meter(struct rte_eth_dev *dev,
 						  "meter flow");
 		sfx_items = (struct rte_flow_item *)((char *)sfx_actions +
 			     act_size);
-		pre_actions = sfx_actions + actions_n;
-		mtr_tag_id = flow_meter_split_prep(dev, flow, fm, &sfx_attr,
-						   items, sfx_items, actions,
-						   sfx_actions, pre_actions,
-						   error);
-		if (!mtr_tag_id) {
+		/* There's no suffix flow for Termination Policy Meter. */
+		if (fm->policy_id != RTE_MTR_DEFAULT_POLICY_ID)
+			pre_actions = sfx_actions + 1;
+		else
+			pre_actions = sfx_actions + actions_n;
+		ret = flow_meter_split_prep(dev, flow, fm, &sfx_attr,
+					    items, sfx_items, actions,
+					    sfx_actions, pre_actions,
+					    (set_mtr_reg ? &mtr_flow_id : NULL),
+					    error);
+		if (ret) {
 			ret = -rte_errno;
 			goto exit;
 		}
 		/* Add the prefix subflow. */
 		flow_split_info->prefix_mark = 0;
+		skip_scale_restore = flow_split_info->skip_scale;
+		flow_split_info->skip_scale |=
+			1 << MLX5_SCALE_JUMP_FLOW_GROUP_BIT;
 		ret = flow_create_split_inner(dev, flow, &dev_flow,
 					      attr, items, pre_actions,
 					      flow_split_info, error);
 		if (ret) {
-			mlx5_ipool_free(fm->flow_ipool, mtr_tag_id);
+			if (mtr_flow_id)
+				mlx5_ipool_free(fm->flow_ipool, mtr_flow_id);
 			ret = -rte_errno;
 			goto exit;
 		}
-		dev_flow->handle->split_flow_id = mtr_tag_id;
-		dev_flow->handle->is_meter_flow_id = 1;
+		flow_split_info->skip_scale = skip_scale_restore;
+		if (mtr_flow_id) {
+			dev_flow->handle->split_flow_id = mtr_flow_id;
+			dev_flow->handle->is_meter_flow_id = 1;
+		}
+		if (fm->policy_id != RTE_MTR_DEFAULT_POLICY_ID) {
+			if (!set_mtr_reg && fm->drop_cnt)
+				ret =
+			flow_meter_create_drop_flow_with_org_pattern(dev, flow,
+							&sfx_attr, items,
+							flow_split_info,
+							fm, error);
+			goto exit;
+		}
 		/* Setting the sfx group atrr. */
 		sfx_attr.group = sfx_attr.transfer ?
 				(MLX5_FLOW_TABLE_LEVEL_SUFFIX - 1) :
@@ -5743,7 +6068,7 @@ flow_list_create(struct rte_eth_dev *dev, uint32_t *list,
 	memset(rss_desc, 0, offsetof(struct mlx5_flow_rss_desc, queue));
 	/* RSS Action only works on NIC RX domain */
 	if (attr->ingress && !attr->transfer)
-		rss = flow_get_rss_action(p_actions_rx);
+		rss = flow_get_rss_action(dev, p_actions_rx);
 	if (rss) {
 		if (flow_rss_workspace_adjust(wks, rss_desc, rss->queue_num))
 			return 0;
