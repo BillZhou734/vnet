@@ -32,6 +32,7 @@
 #include <rte_ecpri.h>
 #include <rte_mbuf.h>
 #include <rte_mbuf_dyn.h>
+#include <rte_meter.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -2267,6 +2268,13 @@ enum rte_flow_action_type {
 	 * See struct rte_flow_action_modify_field.
 	 */
 	RTE_FLOW_ACTION_TYPE_MODIFY_FIELD,
+
+	/**
+	 * Color the packet to reflect the meter color result.
+	 *
+	 * See struct rte_flow_action_color.
+	 */
+	RTE_FLOW_ACTION_TYPE_METER_COLOR,
 };
 
 /**
@@ -2858,6 +2866,16 @@ struct rte_flow_action_set_dscp {
  * - destroy action
  */
 struct rte_flow_shared_action;
+
+/**
+ * RTE_FLOW_ACTION_TYPE_COLOR
+ *
+ * The meter color should be set in the packet meta-data
+ * (i.e. struct rte_mbuf::sched::color).
+ */
+struct rte_flow_action_color {
+	enum rte_color color; /**< Green/Yellow/Red. */
+};
 
 /**
  * Field IDs for MODIFY_FIELD action.

@@ -663,6 +663,9 @@ API Changes
 * sched: Removed ``tb_rate``, ``tc_rate``, ``tc_period`` and ``tb_size``
   from ``struct rte_sched_subport_params``.
 
+* ethdev: Added meter API to support pre-defined policy, rte_flow action list per color.
+  ``rte_mtr_meter_policy_create()``, ``rte_mtr_meter_policy_delete()`` and
+  ``rte_mtr_create_with_policy()``
 
 ABI Changes
 -----------

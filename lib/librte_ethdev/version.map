@@ -246,6 +246,10 @@ EXPERIMENTAL {
 
 	# added in 21.05
 	rte_eth_representor_info_get;
+	rte_mtr_meter_policy_create;
+	rte_mtr_meter_policy_delete;
+	rte_mtr_meter_policy_update;
+	rte_mtr_meter_policy_validate;
 };
 
 INTERNAL {
