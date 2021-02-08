@@ -705,7 +705,7 @@ static void cmd_help_long_parsed(void *parsed_result,
 			"del port meter profile (port_id) (profile_id)\n"
 			"    meter profile delete\n\n"
 
-			"create port meter (port_id) (mtr_id) (profile_id) (meter_enable)\n"
+			"create port meter (port_id) [mtr_id] (profile_id) [policy (policy_id)] (meter_enable)\n"
 			"(g_action) (y_action) (r_action) (stats_mask) (shared)\n"
 			"(use_pre_meter_color) [(dscp_tbl_entry0) (dscp_tbl_entry1)...\n"
 			"(dscp_tbl_entry63)]\n"
@@ -719,6 +719,9 @@ static void cmd_help_long_parsed(void *parsed_result,
 
 			"del port meter (port_id) (mtr_id)\n"
 			"    meter delete\n\n"
+
+			"del port meter policy (port_id) (policy_id)\n"
+			"    meter policy delete\n\n"
 
 			"set port meter profile (port_id) (mtr_id) (profile_id)\n"
 			"    meter update meter profile\n\n"
@@ -17067,6 +17070,7 @@ cmdline_parse_ctx_t main_ctx[] = {
 	(cmdline_parse_inst_t *)&cmd_enable_port_meter,
 	(cmdline_parse_inst_t *)&cmd_disable_port_meter,
 	(cmdline_parse_inst_t *)&cmd_del_port_meter,
+	(cmdline_parse_inst_t *)&cmd_del_port_meter_policy,
 	(cmdline_parse_inst_t *)&cmd_set_port_meter_profile,
 	(cmdline_parse_inst_t *)&cmd_set_port_meter_dscp_table,
 	(cmdline_parse_inst_t *)&cmd_set_port_meter_stats_mask,

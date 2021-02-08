@@ -55,6 +55,10 @@ enum index {
 	GROUP_ID,
 	PRIORITY_LEVEL,
 	SHARED_ACTION_ID,
+	POLICY_ID,
+
+	/* TOP-level command. */
+	ADD,
 
 	/* Top-level command. */
 	SET,
@@ -289,6 +293,9 @@ enum index {
 	ITEM_GENEVE_OPT_TYPE,
 	ITEM_GENEVE_OPT_LENGTH,
 	ITEM_GENEVE_OPT_DATA,
+	ITEM_POL_PORT,
+	ITEM_POL_METER,
+	ITEM_POL_POLICY,
 
 	/* Validate/create actions. */
 	ACTIONS,
@@ -427,6 +434,9 @@ enum index {
 	ACTION_MODIFY_FIELD_SRC_OFFSET,
 	ACTION_MODIFY_FIELD_SRC_VALUE,
 	ACTION_MODIFY_FIELD_WIDTH,
+	ACTION_POL_G,
+	ACTION_POL_Y,
+	ACTION_POL_R,
 };
 
 /** Maximum size for pattern in struct rte_flow_item_raw. */
@@ -806,6 +816,9 @@ struct buffer {
 		struct {
 			int destroy;
 		} aged; /**< Aged arguments. */
+		struct {
+			uint32_t policy_id;
+		} policy;/**< Policy arguments. */
 	} args; /**< Command arguments. */
 };
 
@@ -1781,6 +1794,9 @@ static int parse_ipv6_addr(struct context *, const struct token *,
 static int parse_port(struct context *, const struct token *,
 		      const char *, unsigned int,
 		      void *, unsigned int);
+static int parse_mp(struct context *, const struct token *,
+			const char *, unsigned int,
+			void *, unsigned int);
 static int parse_sa(struct context *, const struct token *,
 		    const char *, unsigned int,
 		    void *, unsigned int);
@@ -1819,7 +1835,7 @@ static const struct token token_list[] = {
 	[ZERO] = {
 		.name = "ZERO",
 		.help = "null entry, abused as the entry point",
-		.next = NEXT(NEXT_ENTRY(FLOW)),
+		.next = NEXT(NEXT_ENTRY(FLOW, ADD)),
 	},
 	[END] = {
 		.name = "",
@@ -1938,6 +1954,13 @@ static const struct token token_list[] = {
 		.name = "{shared_action_id}",
 		.type = "SHARED_ACTION_ID",
 		.help = "shared action id",
+		.call = parse_int,
+		.comp = comp_none,
+	},
+	[POLICY_ID] = {
+		.name = "{policy_id}",
+		.type = "POLCIY_ID",
+		.help = "policy id",
 		.call = parse_int,
 		.comp = comp_none,
 	},
@@ -4524,6 +4547,54 @@ static const struct token token_list[] = {
 		.help = "specify action to share",
 		.next = NEXT(next_action),
 	},
+	[ACTION_POL_G] = {
+		.name = "g_actions",
+		.help = "submit a list of associated actions for green",
+		.next = NEXT(next_action),
+		.call = parse_mp,
+	},
+	[ACTION_POL_Y] = {
+		.name = "y_actions",
+		.help = "submit a list of associated actions for yellow",
+		.next = NEXT(next_action),
+	},
+	[ACTION_POL_R] = {
+		.name = "r_actions",
+		.help = "submit a list of associated actions for red",
+		.next = NEXT(next_action),
+	},
+
+	/* Top-level command. */
+	[ADD] = {
+		.name = "add",
+		.type = "port meter policy {port_id} {arg}",
+		.help = "add port meter policy",
+		.next = NEXT(NEXT_ENTRY(ITEM_POL_PORT)),
+		.call = parse_init,
+	},
+	/* Sub-level commands. */
+	[ITEM_POL_PORT] = {
+		.name = "port",
+		.help = "add port meter policy",
+		.next = NEXT(NEXT_ENTRY(ITEM_POL_METER)),
+	},
+	[ITEM_POL_METER] = {
+		.name = "meter",
+		.help = "add port meter policy",
+		.next = NEXT(NEXT_ENTRY(ITEM_POL_POLICY)),
+	},
+	[ITEM_POL_POLICY] = {
+		.name = "policy",
+		.help = "add port meter policy",
+		.next = NEXT(NEXT_ENTRY(ACTION_POL_R),
+				NEXT_ENTRY(ACTION_POL_Y),
+				NEXT_ENTRY(ACTION_POL_G),
+				NEXT_ENTRY(POLICY_ID),
+				NEXT_ENTRY(PORT_ID)),
+		.args = ARGS(ARGS_ENTRY(struct buffer, args.policy.policy_id),
+				ARGS_ENTRY(struct buffer, port)),
+		.call = parse_mp,
+	},
 };
 
 /** Remove and return last entry from argument stack. */
@@ -4706,6 +4777,47 @@ parse_init(struct context *ctx, const struct token *token,
 	ctx->object = out;
 	ctx->objmask = NULL;
 	return len;
+}
+
+/** Parse tokens for meter policy action commands. */
+static int
+parse_mp(struct context *ctx, const struct token *token,
+	const char *str, unsigned int len,
+	void *buf, unsigned int size)
+{
+	struct buffer *out = buf;
+
+	/* Token name must match. */
+	if (parse_default(ctx, token, str, len, NULL, 0) < 0)
+		return -1;
+	/* Nothing else to do if there is no buffer. */
+	if (!out)
+		return len;
+	if (!out->command) {
+		if (ctx->curr != ITEM_POL_POLICY)
+			return -1;
+		if (sizeof(*out) > size)
+			return -1;
+		out->command = ctx->curr;
+		ctx->objdata = 0;
+		ctx->object = out;
+		ctx->objmask = NULL;
+		out->args.vc.data = (uint8_t *)out + size;
+		return len;
+	}
+	switch (ctx->curr) {
+	case ACTION_POL_G:
+		out->args.vc.actions =
+			(void *)RTE_ALIGN_CEIL((uintptr_t)(out + 1),
+					sizeof(double));
+		out->command = ctx->curr;
+		ctx->objdata = 0;
+		ctx->object = out;
+		ctx->objmask = NULL;
+		return len;
+	default:
+		return -1;
+	}
 }
 
 /** Parse tokens for shared action commands. */
@@ -7664,6 +7776,10 @@ cmd_flow_parsed(const struct buffer *in)
 		break;
 	case TUNNEL_LIST:
 		port_flow_tunnel_list(in->port);
+		break;
+	case ACTION_POL_G:
+		port_meter_policy_add(in->port, in->args.policy.policy_id,
+					in->args.vc.actions);
 		break;
 	default:
 		break;

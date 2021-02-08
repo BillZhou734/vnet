@@ -38,6 +38,7 @@
 #include <rte_string_fns.h>
 #include <rte_cycles.h>
 #include <rte_flow.h>
+#include <rte_mtr.h>
 #include <rte_errno.h>
 #ifdef RTE_NET_IXGBE
 #include <rte_pmd_ixgbe.h>
@@ -52,6 +53,7 @@
 #include <rte_hexdump.h>
 
 #include "testpmd.h"
+#include "cmdline_mtr.h"
 
 #define ETHDEV_FWVERS_LEN 32
 
@@ -1462,6 +1464,38 @@ action_alloc(portid_t port_id, uint32_t id,
 	*ppsa = psa;
 	*action = psa;
 	return 0;
+}
+
+/** Add port meter policy */
+int
+port_meter_policy_add(portid_t port_id, uint32_t policy_id,
+			const struct rte_flow_action *actions)
+{
+	struct rte_mtr_error error;
+	const struct rte_flow_action *acts[RTE_COLORS];
+	const struct rte_flow_action *act = actions;
+	const struct rte_flow_action *start;
+	uint32_t i = 0, act_n;
+	int ret;
+
+	for (i = 0; i < RTE_COLORS; i++) {
+		for (act_n = 0, start = act;
+			act->type != RTE_FLOW_ACTION_TYPE_END; act++)
+			act_n++;
+		if (act_n && act->type == RTE_FLOW_ACTION_TYPE_END)
+			acts[i] = start;
+		else
+			acts[i] = NULL;
+		act++;
+	}
+	ret = rte_mtr_meter_policy_create(port_id,
+			policy_id,
+			acts, &error);
+	if (ret) {
+		print_mtr_err_msg(&error);
+		return -1;
+	}
+	return policy_id;
 }
 
 /** Create shared action */
