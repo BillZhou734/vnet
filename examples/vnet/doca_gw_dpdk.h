@@ -302,6 +302,7 @@ int doca_gw_dpdk_pipe_free_entry(uint16_t portid, struct doca_gw_pipelne_entry *
 
 struct doca_gw_port * doca_gw_dpdk_port_start(struct doca_gw_port_cfg *cfg, struct doca_gw_error *err);
 void doca_gw_dpdk_destroy(uint16_t port_id);
+void doca_gw_dpdk_dump(uint16_t port_id);
 
 
 

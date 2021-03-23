@@ -110,7 +110,7 @@ doca_add_fib_tbl_entry(struct doca_fib_tbl* table, const uint32_t *ip_addr,
 }
 
 int
-remove_fib_table_entry(struct doca_fib_tbl* table, const uint32_t *ip_addr)
+doca_remove_fib_tbl_entry(struct doca_fib_tbl* table, const uint32_t *ip_addr)
 {
   int32_t key = rte_hash_del_key(table->handler, ip_addr);
   if (key >= 0) {

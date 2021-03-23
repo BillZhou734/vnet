@@ -63,7 +63,7 @@ int gw_init_port(int port_id,int nr_queues)
 	struct rte_eth_dev_info dev_info;
         
         if (mbuf_pool == NULL) {
-            mbuf_pool = rte_pktmbuf_pool_create("mbuf_pool", 4096, 128, 0,
+            mbuf_pool = rte_pktmbuf_pool_create("mbuf_pool", 4096 * 4, 128, 0,
                                                 RTE_MBUF_DEFAULT_BUF_SIZE,
                                                 rte_socket_id());
             if (mbuf_pool == NULL ) {

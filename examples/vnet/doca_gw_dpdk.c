@@ -991,6 +991,8 @@ doca_gw_dpdk_create_flow(uint16_t port_id,
 	struct rte_flow *flow;
 	struct rte_flow_error err;
 
+	doca_dump_rte_flow("create rte flow:", port_id, attr,
+		pattern, actions);
 	flow = rte_flow_create(port_id, attr, pattern, actions, &err);
 	if (!flow) {
 		DOCA_LOG_ERR("Port %u create flow fail, type %d message: %s\n",
@@ -1067,7 +1069,7 @@ doca_gw_dpdk_pipe_create_entry_flow(struct doca_gw_pipelne_entry *entry, struct 
 					struct doca_gw_monitor *mon, struct doca_fwd_table_cfg *cfg,
 					__rte_unused struct doca_gw_error *err)
 {
-	DOCA_LOG_INFO("pip create flow:\n");
+	DOCA_LOG_DBG("pip create flow:\n");
 	doca_dump_gw_match(match);
 	doca_dump_gw_actions(actions);
 	pipe->nb_actions_entry = pipe->nb_actions_pipe;
@@ -1092,8 +1094,7 @@ doca_gw_dpdk_pipe_create_entry_flow(struct doca_gw_pipelne_entry *entry, struct 
 		return NULL;
 	}
 	doca_gw_dpdk_build_end_action(pipe);
-	doca_dump_rte_flow("create rte flow:", pipe->port_id, &pipe->attr,
-		pipe->items, pipe->actions);
+
 	return doca_gw_dpdk_create_flow(pipe->port_id, &pipe->attr, pipe->items, pipe->actions);
 }
 
@@ -1116,8 +1117,9 @@ doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipeline *pipeline,
             goto free_pipe_entry;
     }
     entry->id = pipeline->pipe_entry_id++;
+	pipeline->nb_pipe_entrys++;
 	LIST_INSERT_HEAD(&pipeline->entry_list, entry, next);
-    DOCA_LOG_INFO("offload[%d]: pipeline=%p, match =%pi mod %p",
+    DOCA_LOG_DBG("offload[%d]: pipeline=%p, match =%pi mod %p",
 		entry->id, pipeline, match, actions);
 	return entry;
 free_pipe_entry:
@@ -1185,7 +1187,7 @@ struct doca_gw_pipeline *doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *c
     struct doca_gw_pipeline *pl;
 	struct doca_gw_pipe_dpdk_flow *flow;
 
-	DOCA_LOG_INFO("port:%u create pipe:%s\n", cfg->port->port_id, cfg->name);
+	DOCA_LOG_DBG("port:%u create pipe:%s\n", cfg->port->port_id, cfg->name);
 	doca_dump_gw_match(cfg->match);
 	doca_dump_gw_actions(cfg->actions);
 
@@ -1193,6 +1195,7 @@ struct doca_gw_pipeline *doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *c
     if (pl == NULL)
 		return NULL;
     memset(pl,0,sizeof(struct doca_gw_pipeline));
+	strcpy(pl->name, cfg->name);
 	LIST_INIT(&pl->entry_list);
 	pl->id = pipe_id++;
 	flow = &pl->flow;
@@ -1205,7 +1208,9 @@ struct doca_gw_pipeline *doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *c
 		free(pl);
 		return NULL;
 	}
+	rte_spinlock_lock(&cfg->port->pipe_lock);
 	LIST_INSERT_HEAD(&cfg->port->pipe_list, pl, next);
+	rte_spinlock_unlock(&cfg->port->pipe_lock);
     return pl;
 }
 
@@ -1225,6 +1230,7 @@ static struct doca_gw_port *doca_alloc_port_byid(uint8_t port_id, struct doca_gw
 	memset(port, 0x0, sizeof(struct doca_gw_port));
 	port->port_id = port_id;
 	LIST_INIT(&port->pipe_list);
+	rte_spinlock_init(&port->pipe_lock);
 	return port;
 }
 
@@ -1257,19 +1263,20 @@ fail_port_start:
     return NULL;
 }
 
-
 static void doca_gw_free_pipe(uint16_t portid, struct doca_gw_pipeline *pipe)
 {
+	uint32_t nb_pipe_entry = 0;
 	struct doca_gw_pipelne_entry *entry;
 
-	DOCA_LOG_INFO("portid:%u free pipeid:%u\n", portid,pipe->id);
+	DOCA_LOG_INFO("portid:%u free pipeid:%u", portid,pipe->id);
 	while((entry = LIST_FIRST(&pipe->entry_list))) {
 		LIST_REMOVE(entry, next);
-		DOCA_LOG_INFO("free pipe entry:%d\n", entry->id);
+		nb_pipe_entry++;
 		doca_gw_dpdk_pipe_free_entry(portid, entry);
 		free(entry);		
 	}
 	free(pipe);
+	DOCA_LOG_INFO("total free pipe entry:%d", nb_pipe_entry);
 }
 
 void doca_gw_dpdk_destroy(uint16_t port_id)
@@ -1277,13 +1284,33 @@ void doca_gw_dpdk_destroy(uint16_t port_id)
 	struct doca_gw_port *port;
 	struct doca_gw_pipeline *pipe;
 
-	DOCA_LOG_INFO("destroy port_id:%u\n", port_id);
 	port = doca_get_port_byid(port_id);
+	rte_spinlock_lock(&port->pipe_lock);
 	while((pipe = LIST_FIRST(&port->pipe_list))) {
 		LIST_REMOVE(pipe, next);
 		doca_gw_free_pipe(port_id, pipe);
 	}
+	rte_spinlock_unlock(&port->pipe_lock);
 	doca_gw_used_ports[port_id] = NULL;
 	free(port);
+}
+
+void doca_gw_dpdk_dump(uint16_t port_id)
+{
+	struct doca_gw_port *port;
+	struct doca_gw_pipeline *curr;
+	static const char *nic_stats_border = "########################";
+
+	printf("\n  %s Pipe line info for port %-2d %s\n",
+	       nic_stats_border, port_id, nic_stats_border);
+	port = doca_get_port_byid(port_id);
+	rte_spinlock_lock(&port->pipe_lock);
+	curr = LIST_FIRST(&port->pipe_list);
+	while(curr) {
+		printf("  pipe line id:%u,name:%s,flow entry count:%u\n",
+			curr->id, curr->name, curr->nb_pipe_entrys);
+		curr = LIST_NEXT(curr, next);
+	}
+	rte_spinlock_unlock(&port->pipe_lock);
 }
 

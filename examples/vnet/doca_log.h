@@ -51,5 +51,7 @@ enum doca_log_type {
 };
 
 void doca_log_cfg(enum doca_log_type type, const char *cfg);
+void doca_set_log_level(uint32_t log_level);
+uint32_t doca_is_debug_level(void);
 
 #endif

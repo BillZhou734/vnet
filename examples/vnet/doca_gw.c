@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-DOCA_LOG_MODULE(doca_gw)
+DOCA_LOG_MODULE(doca_gw);
 
 struct doca_fwd_tbl {
     const char * name;
@@ -119,6 +119,12 @@ void doca_gw_destroy(uint16_t port_id)
 {
 	doca_gw_dpdk_destroy(port_id);
 }
+
+void doca_gw_dump(uint16_t port_id)
+{
+	doca_gw_dpdk_dump(port_id);
+}
+
 
 struct doca_fwd_tbl *doca_gw_create_fwd_tbl(struct doca_fwd_table_cfg *cfg)
 {

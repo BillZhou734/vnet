@@ -28,5 +28,4 @@ int
 doca_lookup_fib_tbl_entry(struct doca_fib_tbl* table, uint32_t *ip_addr,
                           uint8_t mac[DOCA_ETHER_ADDR_LEN]);
 
-
 #endif

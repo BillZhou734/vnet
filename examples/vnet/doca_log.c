@@ -4,7 +4,7 @@
 
 #include "doca_log.h"
 
-static enum doca_log_level doca_log_default_level = DOCA_LOG_LEVEL_INFO;  
+static enum doca_log_level doca_log_default_level = DOCA_LOG_LEVEL_INFO;
 static int  doca_log_moudle_id = 0;
 
 void register_doca_log(struct doca_log_module *module, const char *name)
@@ -51,4 +51,16 @@ void doca_log_cfg(enum doca_log_type type, const char *cfg)
     if (cfg) {
     }
 }
+
+void doca_set_log_level(uint32_t log_level)
+{
+	doca_log_default_level = log_level;
+}
+
+uint32_t doca_is_debug_level(void)
+{
+	return doca_log_default_level >= DOCA_LOG_LEVEL_DEBUG;
+}
+
+
 

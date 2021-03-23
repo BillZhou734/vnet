@@ -13,7 +13,7 @@ DOCA_LOG_MODULE(doca_debug_dpdk);
 static char dump_buff[MAX_TMP_BUFF] = {'\0'}; /*can't parallel dump*/
 static char prefix_buff[MAX_TMP_BUFF] = {'\0'};
 //todo: maybe need a flage from whole app.
-uint64_t debug_flage = DEBUG_MBUFF | DEBUG_RTE_FLOW | DEBUG_MATCH | DEBUG_ACTIONS;
+//uint64_t debug_flage = DEBUG_MBUFF | DEBUG_RTE_FLOW | DEBUG_MATCH | DEBUG_ACTIONS;
 
 /*increase dump packet every layer line prefix space*/
 static inline void
@@ -173,7 +173,7 @@ doca_dump_rte_flow(const char *name, uint16_t port_id,
 		const struct rte_flow_item items[],
 		const struct rte_flow_action actions[])
 {
-	if (!DEBUG_FLAG_ON(DEBUG_RTE_FLOW))
+	if (!doca_is_debug_level())
 		return;
 	memset(dump_buff, 0x0, sizeof(dump_buff));
 	memset(prefix_buff, 0x0, sizeof(prefix_buff));
@@ -445,22 +445,22 @@ doca_dump_rte_mbuff(const char *name, struct rte_mbuf *mb)
 	char *ethdr;
 	struct rte_ether_hdr _eth_hdr;
 
-	if (!DEBUG_FLAG_ON(DEBUG_MBUFF))
+	if (!doca_is_debug_level())
 		return;
 	memset(dump_buff, 0x0, sizeof(dump_buff));
 	memset(prefix_buff, 0x0, sizeof(prefix_buff));
-	doca_log_buff("%s%p,pkt_len:%u,data_len:%u,nb_segs:%u,ol_flags:0x%lx\n", 
-		name, (void*)mb, mb->pkt_len, mb->data_len, mb->nb_segs, mb->ol_flags);
+	doca_log_buff("%sport:%d recv mbuff on core:%u,pkt_len:%u,data_len:%u,nb_segs:%u,ol_flags:0x%lx\n",
+		name, mb->port, rte_lcore_id(), mb->pkt_len, mb->data_len, mb->nb_segs, mb->ol_flags);
 	ethdr = (char *)((uintptr_t)rte_pktmbuf_read(mb, 0, sizeof(_eth_hdr), &_eth_hdr));	
 	doca_dump_packet_buff((uint8_t*)ethdr, mb->data_len);
-	printf("%s\n\n", dump_buff);
+	DOCA_LOG_INFO("%s", dump_buff);
 }
 
 void doca_dump_gw_actions(struct doca_gw_actions *actions)
 {
 	char dump_buff[MAX_TMP_BUFF] = {'\0'};
-	
-	if (!DEBUG_FLAG_ON(DEBUG_ACTIONS))
+
+	if (!doca_is_debug_level())
 		return;
 	memset(dump_buff, 0x0, sizeof(dump_buff));
 	doca_log_buff("modify action:");
@@ -480,11 +480,25 @@ void doca_dump_gw_actions(struct doca_gw_actions *actions)
 	DOCA_LOG_INFO("%s\n", dump_buff);
 }
 
+static const char* doca_l4_type(uint8_t l4_type)
+{
+	switch(l4_type) {
+	case IPPROTO_UDP:
+		return "udp";
+	case IPPROTO_TCP:
+		return "tcp";
+	case IPPROTO_GRE:
+		return "gre";
+	default:
+		return "unknown";
+	}
+}
+
 void doca_dump_gw_match(struct doca_gw_match *match)
 {
 	char dump_buff[MAX_TMP_BUFF] = {'\0'};
 
-	if (!DEBUG_FLAG_ON(DEBUG_MATCH))
+	if (!doca_is_debug_level())
 		return;
 	memset(dump_buff, 0x0, sizeof(dump_buff));
 	doca_log_buff("match items:");
@@ -499,7 +513,8 @@ void doca_dump_gw_match(struct doca_gw_match *match)
 	if (!doca_is_ip_zero(&match->out_dst_ip))
 		doca_log_ipv4("\n    outer-dst-ip:", rte_be_to_cpu_32(match->out_dst_ip.a.ipv4_addr));
 	if (match->out_l4_type)
-		doca_log_buff("\n    outer-l4-type:%u", match->out_l4_type);
+		doca_log_buff("\n    outer-l4-type:%u[%s]", match->out_l4_type,
+			doca_l4_type(match->out_l4_type));
 	if (match->out_src_port)
 		doca_log_buff("\n    outer-src-port:%u", rte_be_to_cpu_16(match->out_src_port));
 	if (match->out_dst_port)
@@ -520,7 +535,8 @@ void doca_dump_gw_match(struct doca_gw_match *match)
 	if (!doca_is_ip_zero(&match->in_dst_ip))
 		doca_log_ipv4("\n    inner-dst-ip:", rte_be_to_cpu_32(match->in_dst_ip.a.ipv4_addr));
 	if (match->in_l4_type)
-		doca_log_buff("\n    inner-l4-type:%u", match->in_l4_type);
+		doca_log_buff("\n    inner-l4-type:%u[%s]", match->in_l4_type,
+			doca_l4_type(match->in_l4_type));
 	if (match->in_src_port)
 		doca_log_buff("\n    inner-src-port:0x%x", rte_be_to_cpu_16(match->in_src_port));
 	if (match->in_dst_port)

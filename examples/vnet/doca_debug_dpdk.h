@@ -1,6 +1,8 @@
 #ifndef _DOCA_DEBUG_DPDK__H_
 #define _DOCA_DEBUG_DPDK__H_
 
+#include "rte_flow.h"
+
 enum {
 	DEBUG_MBUFF 	= (1 << 0),
 	DEBUG_RTE_FLOW	= (1 << 1),
@@ -18,7 +20,6 @@ enum {
 #define doca_log_mac(item, eth_addr) \
 	doca_log_buff("%s%02X:%02X:%02X:%02X:%02X:%02X ", item, eth_addr[0], \
 		eth_addr[1], eth_addr[2], eth_addr[3],	eth_addr[4], eth_addr[5]);
-#define DEBUG_FLAG_ON(flage) (debug_flage & flage)
 
 struct dump_hdr {
 	uint8_t protocal;

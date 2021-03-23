@@ -82,6 +82,7 @@ static void * doca_ft_aging_main(void *void_ptr)
         DOCA_LOG_CRIT("no ft, abort aging\n");
         return NULL;
     }
+	return NULL;
 
     while(!ft->stop_aging_thread){
         uint64_t t = rte_rdtsc();
