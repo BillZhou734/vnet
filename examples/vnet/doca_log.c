@@ -20,14 +20,16 @@ void register_doca_log(struct doca_log_module *module, const char *name)
 
 void doca_log(struct doca_log_module *module, enum doca_log_level level, const char *format,...)
 {
-    va_list args;
-    if (level > module->level) {
-        return;
-    }
+	va_list args;
 
-    va_start(args, format);
-    vprintf(format, args);
-    va_end(args);
+	module = module;
+	if (level > doca_log_default_level) {
+		return;
+	}
+
+	va_start(args, format);
+	vprintf(format, args);
+	va_end(args);
 }
 
 

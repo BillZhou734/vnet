@@ -16,7 +16,7 @@
 #define DOCA_GTP_ESPN_FLAGS_ON(p) (p & 0x7)
 #define DOCA_GTP_EXT_FLAGS_ON(p)  (p & 0x4)
 
-DOCA_LOG_MODULE(doca_pkt)
+DOCA_LOG_MODULE(doca_pkt);
 
 uint32_t doca_pinfo_outer_ipv4_dst(struct doca_pkt_info *pinfo)
 {

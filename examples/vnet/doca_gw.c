@@ -81,6 +81,7 @@ struct doca_gw_port * doca_gw_port_start(struct doca_gw_port_cfg *cfg, struct do
 	case DOCA_GW_PORT_DPDK_BY_ID:
 		//TODO: need to parse devargs
 		DOCA_LOG_INFO("new doca port type:dpdk port id:%s", cfg->devargs);
+		cfg->port_id = atoi(cfg->devargs);
 		port = doca_gw_dpdk_port_start(cfg, err);
 		break;
 	default:
@@ -88,8 +89,6 @@ struct doca_gw_port * doca_gw_port_start(struct doca_gw_port_cfg *cfg, struct do
 		err->message = "unsupported port type";
 		return NULL;
 	}
-	if (port)
-		port->port_id = atoi(cfg->devargs);
 	return port;
 }
 

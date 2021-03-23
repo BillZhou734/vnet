@@ -108,8 +108,8 @@ static inline void doca_gauge_check_advance(struct doca_gauge * gauge)
         while (now > gauge->next_bin_time) {
                 uint8_t next;
 
-                DOCA_LOG_DBG("advancing current %u current_time %llu total bytes %llu pkts %llu now %llu",
-                             gauge->curr_bin_idx, gauge->next_bin_time, gauge->total.sum, gauge->total.n, now);
+                //DOCA_LOG_DBG("advancing current %u current_time %llu total bytes %llu pkts %llu now %llu",
+                //             gauge->curr_bin_idx, gauge->next_bin_time, gauge->total.sum, gauge->total.n, now);
                 next = (gauge->curr_bin_idx + 1) % gauge->cfg.n_bins;
                 gauge->sum_of_samples.sum   += gauge->bin[gauge->curr_bin_idx].sum - gauge->bin[next].sum;
                 gauge->sum_of_samples.n += gauge->bin[gauge->curr_bin_idx].n - gauge->bin[next].n;

@@ -220,8 +220,8 @@ struct doca_fwd_table_cfg {
     union {
         struct fwd_rss {
             uint32_t rss_flags;
-            uint16_t * queues;
-            int      num_queues;
+            uint16_t *queues;
+            int num_queues;
         } rss;
 
         struct port {

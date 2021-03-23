@@ -6,6 +6,8 @@
 #include "doca_gw.h"
 #include "doca_pkt.h"
 
+#define IPV4_ADDR(a, b, c, d)(((a & 0xff) << 24) | ((b & 0xff) << 16) | \
+		((c & 0xff) << 8) | (d & 0xff))
 struct gw_port_cfg {
     uint16_t n_queues;
     uint16_t port_id;

@@ -10,6 +10,7 @@
 #include "doca_log.h"
 #include "doca_fib.h"
 #include "doca_ft.h"
+#include "doca_debug_dpdk.h"
 
 #include <arpa/inet.h>
 #include "rte_ether.h"
@@ -26,7 +27,7 @@ DOCA_LOG_MODULE(GW);
 #define GW_MAX_PORT_ID  (2)
 #define GW_NEXT_HOPS_NUM  (16)
 #define GW_NUM_OF_PORTS (2)
-#define GW_MAX_FLOWS (4096)
+#define GW_MAX_FLOWS (5000000)
 #define GW_MAX_PIPE_CLS (16)
 
 #define GW_MASK_24 rte_cpu_to_be_32(0xff000000)
@@ -138,12 +139,12 @@ static struct doca_fwd_tbl *gw_build_rss_fwd(int n_queues)
     queues = malloc(sizeof(uint16_t) * n_queues);
 
     for(i = 0 ; i < n_queues ; i++){
-        queues[i] = i;
+        queues[i] = i + 1;
     }
 
     cfg.type = DOCA_FWD_RSS;
     cfg.rss.queues = queues;
-	cfg.rss.rss_flags = DOCA_RSS_IP | DOCA_RSS_UDP | DOCA_RSS_IP;
+	cfg.rss.rss_flags = DOCA_RSS_IP | DOCA_RSS_UDP | DOCA_RSS_TCP;
     cfg.rss.num_queues = n_queues;
     return doca_gw_create_fwd_tbl(&cfg);
 }
@@ -197,9 +198,8 @@ static void gw_build_match_tun_and_5tuple(struct doca_gw_match *match)
 static void gw_build_decap_inner_modify_actions(struct doca_gw_actions *actions)
 {
     // chaning destination ip of inner packet (after decap)
-    actions->decap = true;
-	//test cover all fields.
-    //actions->mod_src_ip.a.ipv4_addr = 0xffffffff;
+    actions->decap = false;
+    actions->mod_src_ip.a.ipv4_addr = 0xffffffff;
     actions->mod_dst_ip.a.ipv4_addr = 0xffffffff;
     //actions->mod_src_port = 0xffff;
     //actions->mod_dst_port = 0xffff;
@@ -266,7 +266,7 @@ static struct doca_gw_pipeline *gw_build_ul_ol(struct doca_gw_port *port)
     gw_build_decap_inner_modify_actions(&actions);
     gw_fill_monior(&monitor);
 
-    pipe_cfg.name   = "overlay-to-underlay";
+    pipe_cfg.name   = "gre-meter-pipe";
     pipe_cfg.port   = port;
     pipe_cfg.match  = &match;
     pipe_cfg.actions = &actions;
@@ -380,7 +380,7 @@ struct doca_gw_port *gw_init_doca_port(struct gw_port_cfg *port_cfg)
     }
 
     *((struct gw_port_cfg *)doca_gw_port_priv_data(port)) = *port_cfg;
-    sw_rss_fwd_tbl_port[port_cfg->port_id] = gw_build_rss_fwd(port_cfg->n_queues);
+    sw_rss_fwd_tbl_port[port_cfg->port_id] = gw_build_rss_fwd(port_cfg->n_queues - 1); //n_queues : all cores
     fwd_tbl_port[port_cfg->port_id] = gw_build_port_fwd(port_cfg->port_id);
 
     return port;
@@ -411,6 +411,7 @@ static void gw_pipeline_set_entry_tun(struct doca_gw_match *match,
  *
  * @return 
  */
+extern uint16_t meter_action;
 struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
                                                              struct doca_gw_pipeline *pipeline)
 {
@@ -436,17 +437,19 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_inf
     match.in_src_port = doca_pinfo_inner_src_port(pinfo);
     match.in_dst_port = doca_pinfo_inner_dst_port(pinfo);
 
-    actions.mod_dst_ip.a.ipv4_addr = (doca_pinfo_inner_ipv4_dst(pinfo) & rte_cpu_to_be_32(0x00ffffff))
-                                    | rte_cpu_to_be_32(0x25000000); // change dst ip
-    //DELELTE
-    //for test all field
-    //actions.mod_src_ip.a.ipv4_addr = rte_cpu_to_be_32(((192<<24) + (168<<16) + (1<<8) + 1));
-    //actions.mod_dst_port = rte_cpu_to_be_16(0x1234); 
-    //actions.mod_src_port = rte_cpu_to_be_16(0x4321);
-    //TODO: add context
-    monitor.flags |= DOCA_GW_METER;
-    monitor.m.cir = 100 * 1000 / 8;// 100k
-    monitor.m.cbs = monitor.m.cir / 8;
+    actions.mod_dst_ip.a.ipv4_addr = (doca_pinfo_outer_ipv4_dst(pinfo) & rte_cpu_to_be_32(0x00ffffff))
+                                    | rte_cpu_to_be_32(IPV4_ADDR(192,0,0,0)); // change dst ip
+
+    actions.mod_src_ip.a.ipv4_addr = (doca_pinfo_outer_ipv4_src(pinfo) & rte_cpu_to_be_32(0x00ffffff))
+									| rte_cpu_to_be_32(IPV4_ADDR(192,0,0,0));
+    actions.mod_dst_port = doca_pinfo_inner_src_port(pinfo) + 1;
+	actions.mod_src_port = doca_pinfo_inner_dst_port(pinfo) + 1;
+
+	if (meter_action == 1) {
+	    monitor.flags = DOCA_GW_METER;
+	    monitor.m.cir = 125000000000;
+	    monitor.m.cbs = monitor.m.cir / 8;
+	}
     return doca_gw_pipeline_add_entry(0, pipeline, &match, &actions, &monitor,
                                       sw_rss_fwd_tbl_port[pinfo->orig_port_id], &err);
 }
@@ -534,9 +537,9 @@ static int gw_init_doca_ports_and_pipes(int ret, int nr_queues)
 {
     struct gw_port_cfg cfg_port0 = { .n_queues = nr_queues, .port_id = 0 };
     struct gw_port_cfg cfg_port1 = { .n_queues = nr_queues, .port_id = 1 };
-
+    struct doca_gw_cfg cfg = {.total_sessions = GW_MAX_FLOWS, .queues = nr_queues};
     struct doca_gw_error err = {0};
-    struct doca_gw_cfg cfg = {GW_MAX_FLOWS};
+
     if (ret) {
         return ret;
     }
@@ -574,6 +577,10 @@ static int gw_init_doca_ports_and_pipes(int ret, int nr_queues)
 
     gw_ins->p_ol_ol[0] = gw_build_ol_to_ol(gw_ins->port0);
     gw_ins->p_ol_ol[1] = gw_build_ol_to_ol(gw_ins->port1);
+
+	//...
+
+	//...
 
     return 0;
 }
@@ -659,7 +666,7 @@ int gw_handle_new_flow(struct doca_pkt_info *pinfo, struct doca_ft_user_ctx **ct
 {
     struct gw_entry *entry = NULL;
     enum gw_classification cls = gw_classifiy_pkt(pinfo);
-    
+
     switch(cls) {
         case GW_CLS_OL_TO_UL:
             DOCA_LOG_DBG("adding entry ol to ul on port:%u", pinfo->orig_port_id);
@@ -714,6 +721,7 @@ int gw_handle_packet(struct doca_pkt_info *pinfo)
     struct gw_entry *entry = NULL;
 
     if(!doca_ft_find(gw_ins->ft, pinfo, &ctx)){
+		doca_dump_rte_mbuff("", (struct rte_mbuf *)pinfo->orig_data);
         if (gw_handle_new_flow(pinfo,&ctx)) {
             return -1;
         }

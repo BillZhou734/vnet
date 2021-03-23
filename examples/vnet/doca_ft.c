@@ -14,7 +14,7 @@
 #include "doca_kpi.h"
 
 
-DOCA_LOG_MODULE(flow_table)
+DOCA_LOG_MODULE(flow_table);
 
 static int _doca_ft_destory_flow(struct doca_ft *ft, struct doca_ft_key *key);
 
@@ -82,6 +82,7 @@ static void * doca_ft_aging_main(void *void_ptr)
         DOCA_LOG_CRIT("no ft, abort aging\n");
         return NULL;
     }
+	return NULL;
 
     while(!ft->stop_aging_thread){
         uint64_t t = rte_rdtsc();
@@ -196,17 +197,15 @@ struct doca_ft *doca_ft_create(int size, uint32_t user_data_size,
     return ft;
 }
 
-static
-struct doca_ft_entry *_doca_ft_find(struct doca_ft *ft, struct doca_ft_key *key)
+static struct
+doca_ft_entry *_doca_ft_find(struct doca_ft *ft, struct doca_ft_key *key)
 {
-    uint32_t hash;
     uint32_t idx;
     struct doca_ft_entry_head *first;
     struct doca_ft_entry *node;
 
-    hash = doca_ft_key_hash(key);
-    idx = hash & ft->cfg.mask;
-    DOCA_LOG_DBG("looking for index%d",idx);
+    idx = key->rss_hash & ft->cfg.mask;
+    //DOCA_LOG_DBG("looking for index%d",idx);
     first = &ft->buckets[idx].head;
     LIST_FOREACH(node, first, next) {
         if (doca_ft_key_equal(&node->key, key)){
@@ -233,11 +232,8 @@ bool doca_ft_find(struct doca_ft *ft, struct doca_pkt_info *pinfo,
     return true; 
 }
 
-
-
 bool doca_ft_add_new(struct doca_ft *ft, struct doca_pkt_info *pinfo,struct doca_ft_user_ctx **ctx)
 {
-    uint32_t hash;
     int idx;
     struct doca_ft_key key = {0};
     struct doca_ft_entry *new_e;
@@ -265,8 +261,7 @@ bool doca_ft_add_new(struct doca_ft *ft, struct doca_pkt_info *pinfo,struct doca
 
     DOCA_LOG_DBG("defined new flow %llu", (unsigned int long long)new_e->user_ctx.fid);
     memcpy(&new_e->key, &key, sizeof(struct doca_ft_key));
-    hash = doca_ft_key_hash(&key);
-    idx = hash & ft->cfg.mask;
+    idx = pinfo->rss_hash & ft->cfg.mask;
     first = &ft->buckets[idx].head;
 
     rte_spinlock_lock(&ft->buckets[idx].lock);
@@ -288,7 +283,6 @@ int _doca_ft_destory_flow(struct doca_ft *ft, struct doca_ft_key *key)
     }
 
     f = _doca_ft_find(ft, key);
-
     if(f){
 	LIST_REMOVE(f, next);
         ft->gw_aging_cb(&f->user_ctx);
