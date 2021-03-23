@@ -1,6 +1,7 @@
 #ifndef _DOCA_DEBUG_DPDK__H_
 #define _DOCA_DEBUG_DPDK__H_
 
+#include <rte_flow.h>
 enum {
 	DEBUG_MBUFF 	= (1 << 0),
 	DEBUG_RTE_FLOW	= (1 << 1),

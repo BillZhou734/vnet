@@ -171,8 +171,6 @@ doca_dump_rte_flow(const char *name, uint16_t port_id,
 		const struct rte_flow_item items[],
 		const struct rte_flow_action actions[])
 {
-	if (!doca_is_debug_level())
-		return;
 	memset(dump_buff, 0x0, sizeof(dump_buff));
 	memset(prefix_buff, 0x0, sizeof(prefix_buff));
 	doca_log_buff("%s\nflow create %u %s %s group %u priority %u pattern ", 
@@ -302,7 +300,7 @@ doca_dump_rte_flow(const char *name, uint16_t port_id,
 		}
 	}
 	doca_log_buff("end ");
-	DOCA_LOG_DBG("%s\n",dump_buff);
+	DOCA_LOG_INFO("%s\n",dump_buff);
 }
 
 static uint8_t
@@ -447,8 +445,9 @@ doca_dump_rte_mbuff(const char *name, struct rte_mbuf *mb)
 		return;
 	memset(dump_buff, 0x0, sizeof(dump_buff));
 	memset(prefix_buff, 0x0, sizeof(prefix_buff));
-	doca_log_buff("%sport:%d recv mbuff on core:%u,pkt_len:%u,data_len:%u,nb_segs:%u,ol_flags:0x%lx\n",
-		name, mb->port, rte_lcore_id(), mb->pkt_len, mb->data_len, mb->nb_segs, mb->ol_flags);
+	doca_log_buff("%sport:%d recv mbuff on core:%u,pkt_len:%u,data_len:%u,nb_segs:%u,ol_flags:0x%lx,rss:0x%x\n",
+		name, mb->port, rte_lcore_id(), mb->pkt_len, mb->data_len,
+		mb->nb_segs, mb->ol_flags, (unsigned int)mb->hash.rss);
 	ethdr = (char *)((uintptr_t)rte_pktmbuf_read(mb, 0, sizeof(_eth_hdr), &_eth_hdr));	
 	doca_dump_packet_buff((uint8_t*)ethdr, mb->data_len);
 	DOCA_LOG_DBG("%s", dump_buff);

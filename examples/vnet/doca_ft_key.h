@@ -11,14 +11,14 @@ struct doca_pkt_info;
 
 struct doca_ft_key {
     uint32_t ipv4_1;
-    uint16_t port_1;
     uint32_t ipv4_2;
+    uint16_t port_1;
     uint16_t port_2;
-    uint8_t protocol;
-
-    uint32_t ipv4_dst;
-    uint8_t  tun_type;
     uint32_t vni;
+    uint8_t	protocol;
+    uint8_t	tun_type;
+	uint8_t pad[6];
+	uint32_t rss_hash;
 };
 
 /**

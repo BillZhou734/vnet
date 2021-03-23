@@ -30,6 +30,7 @@ int doca_ft_key_fill(struct doca_pkt_info *pinfo, struct doca_ft_key *key)
         return -1;
     }
 
+	key->rss_hash = pinfo->rss_hash;
     /* 5-tuple of inner if there is tunnel or outer if none */
     key->protocol = inner?pinfo->inner.l4_type:pinfo->outer.l4_type;
     key->ipv4_1 = doca_ft_key_get_ipv4_src(inner,pinfo);
@@ -41,11 +42,17 @@ int doca_ft_key_fill(struct doca_pkt_info *pinfo, struct doca_ft_key *key)
     if ( pinfo->tun_type != APP_TUN_NONE ) {
         key->tun_type = pinfo->tun_type;
         key->vni = pinfo->tun.vni;
-    }    
+	}
     return 0;
 }
 
 bool doca_ft_key_equal(struct doca_ft_key *key1, struct doca_ft_key *key2)
 {
-    return memcmp(key1, key2, sizeof(struct doca_ft_key)) == 0;
+	uint64_t *keyp1 = (uint64_t*)key1;
+	uint64_t *keyp2 = (uint64_t*)key2;
+	uint64_t res = keyp1[0] ^ keyp2[0];
+
+	res |= keyp1[1] ^ keyp2[1];
+	res |= keyp1[2] ^ keyp2[2];
+	return (res == 0);
 }
