@@ -106,6 +106,7 @@ Features
 - E-Switch mirroring and modify.
 - 21844 flow priorities for ingress or egress flow groups greater than 0 and for any transfer
   flow group.
+- Flow metering, including meter policy API.
 
 Limitations
 -----------
@@ -403,6 +404,17 @@ Limitations
   - Green color is not supported with drop action.
   - Yellow detection is not supported.
   - Red color must be with drop action.
+  - Meter statistics are supported only for drop case.
+  - Meter yellow color detection is not supported.
+  - A meter action created with pre-defined policy must be the last action in the
+    flow except single case where the policy actions are
+    green: NULL or END,
+    yellow: NULL or END,
+    RED: DROP / END.
+  - The only supported meter policy actions:
+    green: QUEUE, RSS, PORT_ID, JUMP, MARK and SET_TAG.
+    yellow: must be empty.
+    red: must be DROP.
 
 Statistics
 ----------
