@@ -286,17 +286,23 @@ static inline bool doca_match_is_udp(struct doca_gw_match *match)
 
 void doca_gw_init_dpdk(struct doca_gw_cfg *cfg);
 
-struct doca_gw_pipe_dpdk_flow*
+struct doca_gw_pipeline*
 doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error *err);
 
-struct rte_flow*
-doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipelne_entry *entry, 
-                                        struct doca_gw_pipe_dpdk_flow *pipe,
+struct doca_gw_pipelne_entry*
+doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipeline *pipeline,
 					struct doca_gw_match *match, struct doca_gw_actions *actions,
 					struct doca_gw_monitor *mon, struct doca_fwd_table_cfg *cfg,
 					struct doca_gw_error *err);
 
+
+
 int doca_gw_dpdk_init_port(uint16_t port_id);
 int doca_gw_dpdk_pipe_free_entry(uint16_t portid, struct doca_gw_pipelne_entry *entry);
+
+struct doca_gw_port * doca_gw_dpdk_port_start(struct doca_gw_port_cfg *cfg, struct doca_gw_error *err);
+void doca_gw_dpdk_destroy(uint16_t port_id);
+
+
 
 #endif
