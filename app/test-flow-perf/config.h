@@ -8,15 +8,15 @@
 #define GET_RSS_HF() (ETH_RSS_IP | ETH_RSS_TCP)
 
 /* Configuration */
-#define RXQ_NUM 4
-#define TXQ_NUM 4
+#define RXQ_NUM 10
+#define TXQ_NUM 10
 #define TOTAL_MBUF_NUM 32000
 #define MBUF_SIZE 2048
 #define MBUF_CACHE_SIZE 512
 #define NR_RXD  256
 #define NR_TXD  256
 #define MAX_PORTS 64
-#define METER_CIR 1250000
+#define METER_CIR 1250000000
 #define DEFAULT_METER_PROF_ID 100
 
 /* This is used for encap/decap & header modify actions.

@@ -61,7 +61,7 @@ generate_flow(uint16_t port_id,
 
 	fill_actions(actions, flow_actions,
 		outer_ip_src, next_table, hairpinq,
-		encap_data, decap_data, core_idx);
+		encap_data, decap_data, core_idx, port_id);
 
 	fill_items(items, flow_items, outer_ip_src, core_idx);
 

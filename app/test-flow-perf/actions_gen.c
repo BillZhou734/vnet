@@ -19,7 +19,6 @@
 #include "flow_gen.h"
 #include "config.h"
 
-
 /* Storage for additional parameters for actions */
 struct additional_para {
 	uint16_t queue;
@@ -30,6 +29,7 @@ struct additional_para {
 	uint64_t encap_data;
 	uint64_t decap_data;
 	uint8_t core_idx;
+	uint16_t port_id;
 };
 
 /* Storage for struct rte_flow_action_raw_encap including external data. */
@@ -907,7 +907,8 @@ add_meter(struct rte_flow_action *actions,
 void
 fill_actions(struct rte_flow_action *actions, uint64_t *flow_actions,
 	uint32_t counter, uint16_t next_table, uint16_t hairpinq,
-	uint64_t encap_data, uint64_t decap_data, uint8_t core_idx)
+	uint64_t encap_data, uint64_t decap_data, uint8_t core_idx,
+	uint16_t port_id)
 {
 	struct additional_para additional_para_data;
 	uint8_t actions_counter = 0;
@@ -930,6 +931,7 @@ fill_actions(struct rte_flow_action *actions, uint64_t *flow_actions,
 		.encap_data = encap_data,
 		.decap_data = decap_data,
 		.core_idx = core_idx,
+		.port_id = port_id,
 	};
 
 	if (hairpinq != 0) {
