@@ -131,6 +131,7 @@ struct doca_dpdk_action_rawencap_data {
 
 struct doca_dpdk_action_meter_data {
 	uint32_t prof_id;
+	uint32_t policy_id;
 	struct rte_flow_action_meter conf;
 };
 

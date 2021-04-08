@@ -765,18 +765,12 @@ static int doca_gw_dpdk_build_fwd(struct doca_gw_pipe_dpdk_flow *pipe,
 	return 0;
 }
 
-static uint32_t doca_gw_dpdk_create_meter_profile(uint16_t port_id, struct doca_gw_monitor *mon)
+static int
+doca_gw_dpdk_create_meter_profile(uint16_t port_id, uint32_t id, struct doca_gw_monitor *mon)
 {
 	int ret;
 	struct rte_mtr_error error;
 	struct rte_mtr_meter_profile mp;
-	uint32_t meter_prof_id = doca_id_pool_alloc_id(doca_gw_engine.meter_profile_pool);
-
-        if (meter_prof_id <= 0) {
-            //TODO should be better handled
-            DOCA_LOG_ERR("out of meter profile ids");
-            return 0;
-        }
 
 	memset(&mp, 0, sizeof(struct rte_mtr_meter_profile));
 	mp.alg = RTE_MTR_SRTCM_RFC2697;
@@ -784,16 +778,58 @@ static uint32_t doca_gw_dpdk_create_meter_profile(uint16_t port_id, struct doca_
 	mp.srtcm_rfc2697.cbs = mon->m.cbs;
 	mp.srtcm_rfc2697.ebs = 0;
 
-	ret = rte_mtr_meter_profile_add
-		(port_id, meter_prof_id, &mp, &error);
+	ret = rte_mtr_meter_profile_add(port_id, id, &mp, &error);
 	if (ret != 0) {
 		DOCA_LOG_ERR("Port %u create Profile id %u error(%d) message: %s\n",
-			port_id, meter_prof_id, error.type,
+			port_id, id, error.type,
 			error.message ? error.message : "(no stated reason)");
-		return 0;
+		return -1;
 	}
-	return meter_prof_id;
+	return 0;
 }
+
+static int
+doca_gw_dpdk_create_meter_policy(uint16_t port_id, uint32_t policy_id,
+						struct doca_fwd_table_cfg *fwd_cfg)
+{
+	int ret;
+	struct rte_mtr_error error;
+	struct rte_flow_action_rss conf;
+	struct rte_flow_action g_actions[2], r_actions[2];
+	const struct rte_flow_action *actions[RTE_COLORS];
+
+	if (fwd_cfg->type != DOCA_FWD_RSS) {
+		DOCA_LOG_ERR("unsupport fwd type:%d\n", fwd_cfg->type);
+		return -1;
+	}
+
+	memset(&conf, 0x0, sizeof(conf));
+	conf.queue_num = fwd_cfg->rss.num_queues;
+	conf.func = RTE_ETH_HASH_FUNCTION_DEFAULT;
+	conf.types = doca_gw_get_rss_type(fwd_cfg->rss.rss_flags);
+	conf.queue = fwd_cfg->rss.queues;
+	g_actions[0].type = RTE_FLOW_ACTION_TYPE_RSS;
+	g_actions[0].conf = &conf;
+	g_actions[1].type = RTE_FLOW_ACTION_TYPE_END;
+	g_actions[1].conf = NULL;
+
+	r_actions[0].type = RTE_FLOW_ACTION_TYPE_DROP;
+	r_actions[0].conf = NULL;
+	r_actions[1].type = RTE_FLOW_ACTION_TYPE_END;
+	r_actions[1].conf = NULL;
+
+	actions[0] = &g_actions[0];
+	actions[1] = NULL;
+	actions[2] = &r_actions[0];
+
+	ret = rte_mtr_meter_policy_create(port_id, policy_id, actions, &error);
+	if (ret) {
+		printf("meter add failed port_id  %d\n", port_id);
+		return -1;
+	}
+	return 0;
+}
+
 
 static int
 doca_gw_dpdk_destroy_meter_profile(uint16_t port_id, uint32_t prof_id)
@@ -809,19 +845,14 @@ doca_gw_dpdk_destroy_meter_profile(uint16_t port_id, uint32_t prof_id)
 	return 0;
 }
 
-static uint32_t
-doca_gw_dpdk_create_meter_rule(int port_id, uint32_t prof_id)
+
+static int
+doca_gw_dpdk_create_meter_rule(int port_id, uint32_t meter_id,
+					struct doca_gw_pipelne_entry *pipe_entry)
 {
 	int ret;
 	struct rte_mtr_params params;
 	struct rte_mtr_error error;
-	uint32_t meter_id = doca_id_pool_alloc_id(doca_gw_engine.meter_pool);
-
-        if (meter_id < 0) {
-            //TODO: better handle
-            DOCA_LOG_ERR("failed to allocate meter id");
-            return 0;
-        }
 
 	memset(&params, 0, sizeof(struct rte_mtr_params));
 	params.meter_enable = 1;
@@ -830,12 +861,10 @@ doca_gw_dpdk_create_meter_rule(int port_id, uint32_t prof_id)
 	params.dscp_table = NULL;
 
 	/*create meter*/
-	params.meter_profile_id = prof_id;
-	params.action[RTE_COLOR_GREEN] = MTR_POLICER_ACTION_COLOR_GREEN;
-	params.action[RTE_COLOR_YELLOW] = MTR_POLICER_ACTION_COLOR_YELLOW;
-	params.action[RTE_COLOR_RED] = MTR_POLICER_ACTION_DROP;
+	params.meter_profile_id = pipe_entry->meter_profile_id;
+	params.meter_policy_id = pipe_entry->meter_profile_id;
 
-	ret = rte_mtr_create(port_id, meter_id, &params, 1, &error);
+	ret = rte_mtr_create(port_id, meter_id, &params, 0, &error);
 	if (ret != 0) {
 		DOCA_LOG_ERR("Port %u create meter idx(%d) error(%d) message: %s\n",
 			port_id, meter_id, error.type,
@@ -860,41 +889,58 @@ doca_gw_dpdk_destroy_meter_rule(int port_id, uint32_t mtr_id)
 }
 
 static int 
-doca_gw_dpdk_build_meter_action(struct doca_gw_pipelne_entry *pipe_entry, uint16_t port_id, 
-                                                        struct doca_dpdk_action_entry *entry, 
-							struct doca_gw_monitor *mon)
+doca_gw_dpdk_build_meter_action(struct doca_gw_pipelne_entry *pipe_entry,
+							uint16_t port_id,
+							struct doca_dpdk_action_entry *entry, 
+							struct doca_gw_monitor *mon,
+							struct doca_fwd_table_cfg *cfg)
 {
+	int ret;
 	struct rte_flow_action *action = entry->action;
 	struct rte_flow_action_meter *meter_conf;
 	struct doca_dpdk_action_meter_data *meter_data;
+	uint32_t id = doca_id_pool_alloc_id(doca_gw_engine.meter_pool);
 
-	// todo: how to prevent profile create many times.
+	if (id <= 0) {
+		//TODO should be better handled
+		DOCA_LOG_ERR("out of meter profile ids");
+		return 0;
+	}
+
 	meter_data = &entry->action_data.meter;
-	meter_data->prof_id = doca_gw_dpdk_create_meter_profile(port_id, mon);
-	if (!meter_data->prof_id)
+	ret = doca_gw_dpdk_create_meter_profile(port_id, id, mon);
+	if (ret < 0)
 		return -1;
-        pipe_entry->meter_profile_id = meter_data->prof_id;
+	ret = doca_gw_dpdk_create_meter_policy(port_id, id, cfg);
+	if (ret < 0)
+		return -1;
+	meter_data->policy_id = id;
+	meter_data->prof_id = id;
+	pipe_entry->meter_profile_id = meter_data->prof_id;
+	pipe_entry->meter_policy_id = meter_data->policy_id;
 	meter_conf = &meter_data->conf;
-	meter_conf->mtr_id = doca_gw_dpdk_create_meter_rule(port_id, meter_data->prof_id);
-	if (!meter_conf->mtr_id)
+	ret = doca_gw_dpdk_create_meter_rule(port_id, id, pipe_entry);
+	if (ret < 0)
 		return -1;
+	pipe_entry->meter_id = id;
+	meter_conf->mtr_id = id;
 	action->type = RTE_FLOW_ACTION_TYPE_METER;
 	action->conf = meter_conf;
-        pipe_entry->meter_id = meter_conf->mtr_id;
 	return 0;
 }
 
 static int
 doca_gw_dpdk_build_monitor_action(struct doca_gw_pipelne_entry *pipe_entry,
-                                  struct doca_gw_pipe_dpdk_flow *pipe, 
-			          struct doca_gw_monitor *mon)
+						struct doca_gw_pipe_dpdk_flow *pipe, 
+						struct doca_gw_monitor *mon,
+						struct doca_fwd_table_cfg *cfg)
 {
 	uint16_t port_id = pipe->port_id;
 	struct doca_dpdk_action_entry *entry;
 
 	if (mon->flags & DOCA_GW_METER) {
 		entry = &pipe->action_entry[pipe->nb_actions_entry++];
-		if (doca_gw_dpdk_build_meter_action(pipe_entry, port_id, entry, mon))
+		if (doca_gw_dpdk_build_meter_action(pipe_entry, port_id, entry, mon, cfg))
 			return -1;
 	}
 	//todo:  count/aging...
@@ -1039,7 +1085,7 @@ doca_gw_dpdk_pipe_create_entry_flow(struct doca_gw_pipelne_entry *entry, struct 
 		return NULL;
 	}
 	if (mon->flags != DOCA_GW_NONE
-		&& doca_gw_dpdk_build_monitor_action(entry, pipe, mon)) {
+		&& doca_gw_dpdk_build_monitor_action(entry, pipe, mon, cfg)) {
 		DOCA_LOG_ERR("create monitor action fail.\n");
 		return NULL;
 	}
