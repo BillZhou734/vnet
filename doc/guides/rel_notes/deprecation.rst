@@ -139,3 +139,11 @@ Deprecation Notices
 * cmdline: ``cmdline`` structure will be made opaque to hide platform-specific
   content. On Linux and FreeBSD, supported prior to DPDK 20.11,
   original structure will be kept until DPDK 21.11.
+
+* i40e: As there are both i40evf and iavf pmd, the functions of them are
+  duplicated. And now more and more advanced features are developed on iavf.
+  To keep consistent with kernel driver's name
+  (https://patchwork.ozlabs.org/patch/970154/), i40evf is no need to maintain.
+  Starting from 21.05, the default VF driver of i40e will be iavf, but i40evf
+  can still be used if users specify the devarg "driver=i40evf". I40evf will
+  be deleted in DPDK 21.11.
