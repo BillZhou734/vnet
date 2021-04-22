@@ -8,7 +8,7 @@
 #include <rte_net.h>
 #include "gw_port.h"
 #include "doca_log.h"
-#include "doca_gw.h"
+#include "doca_flow.h"
 
 DOCA_LOG_MODULE(gw_port)
 
@@ -145,7 +145,7 @@ void gw_close_port(int port_id)
 {
     struct rte_flow_error error;
 
-	doca_gw_destroy(port_id);
+	doca_destroy(port_id);
     rte_flow_flush(port_id, &error);
     rte_eth_dev_stop(port_id);
     rte_eth_dev_close(port_id);
@@ -244,7 +244,7 @@ void gw_dump_port_stats(uint16_t port_id)
 	const char topLeft[] = { 27, '[', '1', ';', '1', 'H','\0' };
 
 	printf("%s%s", clr, topLeft);
-	doca_gw_dump_pipeline(port_id);
+	doca_dump_pipeline(port_id);
 	gw_port_stats_display(port_id);
 	fflush(stdout);
 }

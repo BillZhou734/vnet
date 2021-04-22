@@ -5,7 +5,7 @@
 
 #include "gw.h"
 #include "doca_vnf.h"
-#include "doca_gw.h"
+#include "doca_flow.h"
 #include "doca_utils.h"
 #include "doca_log.h"
 #include "doca_fib.h"
@@ -44,7 +44,7 @@ DOCA_LOG_MODULE(GW);
 #define GW_DEFAULT_CIR (100000000/8)
 #define GW_DEFAULT_CBS (GW_DEFAULT_CIR << 4)
 
-static enum doca_gw_tun_type gw_tun_type = DOCA_TUN_GRE;
+static enum doca_tun_type gw_tun_type = DOCA_TUN_GRE;
 
 static void gw_aged_flow_cb(struct doca_ft_user_ctx *ctx);
 static void gw_hw_aging_cb(void);
@@ -73,16 +73,16 @@ struct gw_slb {
 struct ex_gw {
     struct doca_ft *ft;
 
-    struct doca_gw_port *port0; 
-    struct doca_gw_port *port1; 
+    struct doca_port *port0; 
+    struct doca_port *port1; 
     struct gw_slb slb;                 /* Service Load Balancer */
     struct doca_fib_tbl *gw_fib_tbl;   /* GW fib table */
 
     /* for classificaiton purpose */
     struct gw_ipv4_match cls_match[GW_MAX_PIPE_CLS];
     /* pipelines */
-    struct doca_gw_pipeline *p_over_under[GW_NUM_OF_PORTS];
-    struct doca_gw_pipeline *p_ol_ol[GW_NUM_OF_PORTS];
+    struct doca_pipeline *p_over_under[GW_NUM_OF_PORTS];
+    struct doca_pipeline *p_ol_ol[GW_NUM_OF_PORTS];
 };
 
 struct gw_entry {
@@ -90,7 +90,7 @@ struct gw_entry {
     int total_bytes;
     enum gw_classification cls;
     bool is_hw;
-    struct doca_gw_pipelne_entry *hw_entry;
+    struct doca_pipelne_entry *hw_entry;
 };
 
 struct ex_gw *gw_ins;
@@ -125,7 +125,7 @@ struct doca_fwd_tbl *gw_build_port_fwd(int port_id)
 {
     struct doca_fwd_table_cfg cfg = { .type = DOCA_FWD_PORT};
     cfg.port.id = port_id;
-    return doca_gw_create_fwd_tbl(&cfg);
+    return doca_create_fwd_tbl(&cfg);
 }
 
 
@@ -145,11 +145,11 @@ static struct doca_fwd_tbl *gw_build_rss_fwd(int n_queues)
     cfg.rss.queues = queues;
 	cfg.rss.rss_flags = DOCA_RSS_IP | DOCA_RSS_UDP | DOCA_RSS_IP;
     cfg.rss.num_queues = n_queues;
-    return doca_gw_create_fwd_tbl(&cfg);
+    return doca_create_fwd_tbl(&cfg);
 }
 
 static
-void gw_build_tun_match(struct doca_gw_match *match)
+void gw_build_tun_match(struct doca_match *match)
 {
     switch (gw_tun_type) {
         case DOCA_TUN_VXLAN:
@@ -178,7 +178,7 @@ void gw_build_tun_match(struct doca_gw_match *match)
  *
  * @param match
  */
-static void gw_build_match_tun_and_5tuple(struct doca_gw_match *match)
+static void gw_build_match_tun_and_5tuple(struct doca_match *match)
 {
     match->out_dst_ip.a.ipv4_addr = 0xffffffff;
     match->out_dst_ip.type = DOCA_IPV4;
@@ -194,7 +194,7 @@ static void gw_build_match_tun_and_5tuple(struct doca_gw_match *match)
     match->in_dst_port = 0xffff;
 }
 
-static void gw_build_decap_inner_modify_actions(struct doca_gw_actions *actions)
+static void gw_build_decap_inner_modify_actions(struct doca_actions *actions)
 {
     // chaning destination ip of inner packet (after decap)
     actions->decap = true;
@@ -205,7 +205,7 @@ static void gw_build_decap_inner_modify_actions(struct doca_gw_actions *actions)
     //actions->mod_dst_port = 0xffff;
 }
 
-static void gw_build_encap_tun(struct doca_gw_actions *actions)
+static void gw_build_encap_tun(struct doca_actions *actions)
 {
     switch(gw_tun_type) {
         case DOCA_TUN_VXLAN:
@@ -222,7 +222,7 @@ static void gw_build_encap_tun(struct doca_gw_actions *actions)
     }
 }
 
-static void gw_build_encap_actions(struct doca_gw_actions *actions)
+static void gw_build_encap_actions(struct doca_actions *actions)
 {
     actions->encap.in_src_ip.a.ipv4_addr = doca_inline_parse_ipv4("13.0.0.13");
     actions->encap.in_dst_ip.a.ipv4_addr = 0xffffffff;
@@ -233,7 +233,7 @@ static void gw_build_encap_actions(struct doca_gw_actions *actions)
     gw_build_encap_tun(actions);
 }
 
-static void gw_fill_monior(struct doca_gw_monitor *monitor)
+static void gw_fill_monior(struct doca_monitor *monitor)
 {
     monitor->count = true;
 }
@@ -249,17 +249,17 @@ static void gw_fill_monior(struct doca_gw_monitor *monitor)
  *
  * @return 
  */
-static struct doca_gw_pipeline *gw_build_ul_ol(struct doca_gw_port *port)
+static struct doca_pipeline *gw_build_ul_ol(struct doca_port *port)
 {
     // configure a pipeline. values of 0 means the parameters
     // will not be used. mask means for each entry a value should be provided
     // a real value means a constant value and should not be added on any entry
     // added
-    struct doca_gw_pipeline_cfg pipe_cfg = {0};
-    struct doca_gw_error err = {0};
-    struct doca_gw_match match;
-    struct doca_gw_actions actions = {0};
-    struct doca_gw_monitor monitor = { .m.cbs = UINT64_MAX,.m.cir = UINT64_MAX};
+    struct doca_pipeline_cfg pipe_cfg = {0};
+    struct doca_error err = {0};
+    struct doca_match match;
+    struct doca_actions actions = {0};
+    struct doca_monitor monitor = { .m.cbs = UINT64_MAX,.m.cir = UINT64_MAX};
 
     memset(&match, 0x0, sizeof(match));
     gw_build_match_tun_and_5tuple(&match);
@@ -273,7 +273,7 @@ static struct doca_gw_pipeline *gw_build_ul_ol(struct doca_gw_port *port)
     pipe_cfg.monitor = &monitor;
     pipe_cfg.count  = false;
 
-    return doca_gw_create_pipe(&pipe_cfg,&err);
+    return doca_create_pipe(&pipe_cfg,&err);
 }
 
 /**
@@ -287,17 +287,17 @@ static struct doca_gw_pipeline *gw_build_ul_ol(struct doca_gw_port *port)
  *
  * @return 
  */
-static struct doca_gw_pipeline *gw_build_ol_to_ol(struct doca_gw_port *port)
+static struct doca_pipeline *gw_build_ol_to_ol(struct doca_port *port)
 {   
     // configure a pipeline. values of 0 means the parameters
     // will not be used. mask means for each entry a value should be provided
     // a real value means a constant value and should not be added on any entry
     // added
-    struct doca_gw_pipeline_cfg pipe_cfg = {0};
-    struct doca_gw_error err = {0};
-    struct doca_gw_match match;
-    struct doca_gw_actions actions = {0};
-    struct doca_gw_monitor monitor = {0};
+    struct doca_pipeline_cfg pipe_cfg = {0};
+    struct doca_error err = {0};
+    struct doca_match match;
+    struct doca_actions actions = {0};
+    struct doca_monitor monitor = {0};
 
     memset(&match, 0x0, sizeof(match));
     gw_build_match_tun_and_5tuple(&match);
@@ -312,7 +312,7 @@ static struct doca_gw_pipeline *gw_build_ol_to_ol(struct doca_gw_port *port)
     pipe_cfg.monitor = &monitor;
     pipe_cfg.count  = false;
 
-    return doca_gw_create_pipe(&pipe_cfg,&err);
+    return doca_create_pipe(&pipe_cfg,&err);
 }
 
 /**
@@ -351,13 +351,13 @@ enum gw_classification gw_classifiy_pkt(struct doca_pkt_info *pinfo)
     return GW_CLS_OL_TO_OL;
 }
 
-struct doca_gw_port *gw_init_doca_port(struct gw_port_cfg *port_cfg)
+struct doca_port *gw_init_doca_port(struct gw_port_cfg *port_cfg)
 {
 #define GW_MAX_PORT_STR (128)
     char port_id_str[GW_MAX_PORT_STR];
-    struct doca_gw_port_cfg doca_cfg_port; 
-    struct doca_gw_port *port;
-    struct doca_gw_error err = {0};
+    struct doca_port_cfg doca_cfg_port; 
+    struct doca_port *port;
+    struct doca_error err = {0};
 
     snprintf(port_id_str, GW_MAX_PORT_STR,"%d",port_cfg->port_id);
 
@@ -372,21 +372,21 @@ struct doca_gw_port *gw_init_doca_port(struct gw_port_cfg *port_cfg)
     }
 
     // adding ports
-    port = doca_gw_port_start(&doca_cfg_port, &err);
+    port = doca_port_start(&doca_cfg_port, &err);
 
     if (port == NULL) {
         DOCA_LOG_ERR("failed to start port %s",err.message);
         return NULL;
     }
 
-    *((struct gw_port_cfg *)doca_gw_port_priv_data(port)) = *port_cfg;
+    *((struct gw_port_cfg *)doca_port_priv_data(port)) = *port_cfg;
     sw_rss_fwd_tbl_port[port_cfg->port_id] = gw_build_rss_fwd(port_cfg->n_queues);
     fwd_tbl_port[port_cfg->port_id] = gw_build_port_fwd(port_cfg->port_id);
 
     return port;
 }
 
-static void gw_pipeline_set_entry_tun(struct doca_gw_match *match, 
+static void gw_pipeline_set_entry_tun(struct doca_match *match, 
                                 struct doca_pkt_info *pinfo)
 {
     switch (gw_tun_type) {
@@ -411,13 +411,13 @@ static void gw_pipeline_set_entry_tun(struct doca_gw_match *match,
  *
  * @return 
  */
-struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
-                                                             struct doca_gw_pipeline *pipeline)
+struct doca_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
+                                                             struct doca_pipeline *pipeline)
 {
-    struct doca_gw_match match;
-    struct doca_gw_actions actions = {0};
-    struct doca_gw_monitor monitor = { .m.cbs = GW_DEFAULT_CBS, .m.cir = GW_DEFAULT_CIR};
-    struct doca_gw_error err = {0};
+    struct doca_match match;
+    struct doca_actions actions = {0};
+    struct doca_monitor monitor = { .m.cbs = GW_DEFAULT_CBS, .m.cir = GW_DEFAULT_CIR};
+    struct doca_error err = {0};
 
     if (pinfo->outer.l3_type != GW_IPV4) {
         DOCA_LOG_WARN("IPv6 not supported");
@@ -447,18 +447,18 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_inf
     monitor.flags |= DOCA_GW_METER;
     monitor.m.cir = 100 * 1000 / 8;// 100k
     monitor.m.cbs = monitor.m.cir / 8;
-    return doca_gw_pipeline_add_entry(0, pipeline, &match, &actions, &monitor,
+    return doca_pipeline_add_entry(0, pipeline, &match, &actions, &monitor,
                                       sw_rss_fwd_tbl_port[pinfo->orig_port_id], &err);
 }
 
 
-struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_info *pinfo,
-                                                             struct doca_gw_pipeline *pipeline)
+struct doca_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_info *pinfo,
+                                                             struct doca_pipeline *pipeline)
 {
-    struct doca_gw_match match;
-    struct doca_gw_actions actions = {0};
-    struct doca_gw_monitor monitor = {0};
-    struct doca_gw_error err = {0};
+    struct doca_match match;
+    struct doca_actions actions = {0};
+    struct doca_monitor monitor = {0};
+    struct doca_error err = {0};
 
     if (pinfo->outer.l3_type != GW_IPV4) {
         DOCA_LOG_WARN("IPv6 not supported");
@@ -495,13 +495,13 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_inf
     //TODO: add src port mac
     memset(actions.encap.src_mac,0xff, sizeof(actions.encap.src_mac));
 
-    return doca_gw_pipeline_add_entry(0, pipeline, &match, &actions, &monitor,
+    return doca_pipeline_add_entry(0, pipeline, &match, &actions, &monitor,
             fwd_tbl_port[gw_slb_peer_port(pinfo->orig_port_id)], &err);
 }
 
-void gw_rm_pipeline_entry(struct doca_gw_pipelne_entry *entry)
+void gw_rm_pipeline_entry(struct doca_pipelne_entry *entry)
 {
-   doca_gw_rm_entry(0,entry);
+   doca_rm_entry(0,entry);
 }
 
 static int gw_create(void)
@@ -535,13 +535,13 @@ static int gw_init_doca_ports_and_pipes(int ret, int nr_queues)
     struct gw_port_cfg cfg_port0 = { .n_queues = nr_queues, .port_id = 0 };
     struct gw_port_cfg cfg_port1 = { .n_queues = nr_queues, .port_id = 1 };
 
-    struct doca_gw_error err = {0};
-    struct doca_gw_cfg cfg = {GW_MAX_FLOWS};
+    struct doca_error err = {0};
+    struct doca_cfg cfg = {GW_MAX_FLOWS};
     if (ret) {
         return ret;
     }
     /* init doca framework */
-    if (doca_gw_init(&cfg,&err)) { 
+    if (doca_init(&cfg,&err)) { 
         DOCA_LOG_ERR("failed to init doca:%s",err.message);
         return -1;
     }

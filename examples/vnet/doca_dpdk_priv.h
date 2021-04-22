@@ -1,8 +1,11 @@
 #ifndef _DOCA_DPDK_PRIV_H_
 #define _DOCA_DPDK_PRIV_H_
 
-struct doca_gw_pipelne_entry {
-	LIST_ENTRY(doca_gw_pipelne_entry) next;
+#include "doca_flow.h"
+#include "doca_dpdk.h"
+
+struct doca_pipelne_entry {
+	LIST_ENTRY(doca_pipelne_entry) next;
     int id;
     void *pipe_entry;
     uint32_t meter_id;
@@ -11,25 +14,25 @@ struct doca_gw_pipelne_entry {
 };
 
 #define TMP_BUFF 128
-struct doca_gw_pipeline {
-	LIST_ENTRY(doca_gw_pipeline) next;
+struct doca_pipeline {
+	LIST_ENTRY(doca_pipeline) next;
 	char name[TMP_BUFF];
     void * handler;
 	uint32_t id;
 	uint32_t pipe_entry_id;
 	uint32_t nb_pipe_entrys;
-	struct doca_gw_pipe_dpdk_flow flow;
+	struct doca_pipe_flow flow;
 	rte_spinlock_t entry_lock;
-	LIST_HEAD(, doca_gw_pipelne_entry) entry_list;
+	LIST_HEAD(, doca_pipelne_entry) entry_list;
 };
 
-struct doca_gw_port
+struct doca_port
 {
     uint32_t port_id;
     int      idx;
 
 	rte_spinlock_t pipe_lock;
-	LIST_HEAD(, doca_gw_pipeline) pipe_list;
+	LIST_HEAD(, doca_pipeline) pipe_list;
     uint8_t  user_data[0];
 };
 

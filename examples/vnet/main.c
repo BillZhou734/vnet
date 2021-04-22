@@ -27,7 +27,7 @@
 #include <rte_flow.h>
 #include <rte_cycles.h>
 
-#include "doca_gw.h"
+#include "doca_flow.h"
 #include "doca_pcap.h"
 #include "doca_log.h"
 #include "doca_debug_dpdk.h"

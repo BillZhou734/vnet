@@ -3,8 +3,8 @@
 #include <rte_ethdev.h>
 #include <rte_flow.h>
 #include <rte_gre.h>
-#include "doca_gw.h"
-#include "doca_gw_dpdk.h"
+#include "doca_flow.h"
+#include "doca_dpdk.h"
 #include "doca_log.h"
 #include "doca_debug_dpdk.h"
 
@@ -454,7 +454,7 @@ doca_dump_rte_mbuff(const char *name, struct rte_mbuf *mb)
 	DOCA_LOG_DBG("%s", dump_buff);
 }
 
-void doca_dump_gw_actions(struct doca_gw_actions *actions)
+void doca_dump_actions(struct doca_actions *actions)
 {
 	char dump_buff[MAX_TMP_BUFF] = {'\0'};
 
@@ -492,7 +492,7 @@ static const char* doca_l4_type(uint8_t l4_type)
 	}
 }
 
-void doca_dump_gw_match(struct doca_gw_match *match)
+void doca_dump_match(struct doca_match *match)
 {
 	char dump_buff[MAX_TMP_BUFF] = {'\0'};
 

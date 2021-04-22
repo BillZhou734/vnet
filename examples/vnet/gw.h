@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "doca_gw.h"
+#include "doca_flow.h"
 #include "doca_pkt.h"
 
 struct gw_port_cfg {
@@ -42,7 +42,7 @@ int gw_parse_pkt_str(struct doca_pkt_info *pinfo, char *str, int len);
  *
  * @return 
  */
-struct doca_gw_pipeline *gw_init_ol_to_ul_pipeline(struct doca_gw_port *p);
+struct doca_pipeline *gw_init_ol_to_ul_pipeline(struct doca_port *p);
 
 /**
  * @brief - overlay to overlay pipeline
@@ -64,7 +64,7 @@ struct doca_gw_pipeline *gw_init_ol_to_ul_pipeline(struct doca_gw_port *p);
  *
  * @return 
  */
-struct doca_gw_pipeline *gw_init_ol_to_ol_pipeline(struct doca_gw_port *p);
+struct doca_pipeline *gw_init_ol_to_ol_pipeline(struct doca_port *p);
 
 
 
@@ -75,7 +75,7 @@ struct doca_gw_pipeline *gw_init_ol_to_ol_pipeline(struct doca_gw_port *p);
  *
  * @return 
  */
-struct doca_gw_port *gw_init_doca_port(struct gw_port_cfg *port_cfg);
+struct doca_port *gw_init_doca_port(struct gw_port_cfg *port_cfg);
 
 enum gw_classification {
     GW_CLS_OL_TO_UL,
@@ -102,7 +102,7 @@ enum gw_classification gw_classifiy_pkt(struct doca_pkt_info *pinfo);
  *
  * @return handle
  */
-struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_info *pinfo, struct doca_gw_pipeline *pipeline);
+struct doca_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_info *pinfo, struct doca_pipeline *pipeline);
 
 /**
  * @brief 
@@ -112,10 +112,10 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_inf
  *
  * @return 
  */
-struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_info *pinfo, struct doca_gw_pipeline *pipeline);
+struct doca_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_info *pinfo, struct doca_pipeline *pipeline);
 
 
-void gw_rm_pipeline_entry(struct doca_gw_pipelne_entry *entry);
+void gw_rm_pipeline_entry(struct doca_pipelne_entry *entry);
 
 struct doca_vnf *gw_get_doca_vnf(void);
 

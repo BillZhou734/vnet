@@ -5,13 +5,13 @@
 #define DOCA_ETHER_ADDR_LEN (6)
 #define DOCA_VXLAN_DEFAULT_PORT (4789)
 
-enum doca_gw_l3_type {
+enum doca_l3_type {
 	DOCA_NONE = 0,
     DOCA_IPV4 = 4,
     DOCA_IPV6 = 6,
 };
 
-enum doca_gw_tun_type {
+enum doca_tun_type {
     DOCA_TUN_NONE = 0,
     DOCA_TUN_VXLAN,
     DOCA_TUN_GRE,
@@ -29,8 +29,8 @@ enum doca_modify_flags{
 	DOCA_MODIFY_VXLAN_VNI	= (1 << 8),
 };
 
-struct doca_gw_tun {
-    enum doca_gw_tun_type type;
+struct doca_tun {
+    enum doca_tun_type type;
     union {
         struct vxlan {
             uint32_t tun_id;
