@@ -43,7 +43,7 @@ all_examples = [
 	'vhost', 'vhost_crypto',
 	'vhost_blk', 'vm_power_manager',
 	'vm_power_manager/guest_cli',
-	'vmdq', 'vmdq_dcb',
+	'vmdq', 'vmdq_dcb', 'vnet',
 ]
 
 # on install, skip copying all meson.build files
