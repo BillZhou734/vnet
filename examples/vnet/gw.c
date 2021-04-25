@@ -81,8 +81,8 @@ struct ex_gw {
     /* for classificaiton purpose */
     struct gw_ipv4_match cls_match[GW_MAX_PIPE_CLS];
     /* pipelines */
-    struct doca_gw_pipeline *p_over_under[GW_NUM_OF_PORTS];
-    struct doca_gw_pipeline *p_ol_ol[GW_NUM_OF_PORTS];
+    struct doca_flow_pipeline *p_over_under[GW_NUM_OF_PORTS];
+    struct doca_flow_pipeline *p_ol_ol[GW_NUM_OF_PORTS];
 };
 
 struct gw_entry {
@@ -249,13 +249,13 @@ static void gw_fill_monior(struct doca_flow_monitor *monitor)
  *
  * @return 
  */
-static struct doca_gw_pipeline *gw_build_ul_ol(struct doca_flow_port *port)
+static struct doca_flow_pipeline *gw_build_ul_ol(struct doca_flow_port *port)
 {
     // configure a pipeline. values of 0 means the parameters
     // will not be used. mask means for each entry a value should be provided
     // a real value means a constant value and should not be added on any entry
     // added
-    struct doca_gw_pipeline_cfg pipe_cfg = {0};
+    struct doca_flow_pipeline_cfg pipe_cfg = {0};
     struct doca_gw_error err = {0};
     struct doca_flow_match match;
     struct doca_flow_actions actions = {0};
@@ -287,13 +287,13 @@ static struct doca_gw_pipeline *gw_build_ul_ol(struct doca_flow_port *port)
  *
  * @return 
  */
-static struct doca_gw_pipeline *gw_build_ol_to_ol(struct doca_flow_port *port)
+static struct doca_flow_pipeline *gw_build_ol_to_ol(struct doca_flow_port *port)
 {   
     // configure a pipeline. values of 0 means the parameters
     // will not be used. mask means for each entry a value should be provided
     // a real value means a constant value and should not be added on any entry
     // added
-    struct doca_gw_pipeline_cfg pipe_cfg = {0};
+    struct doca_flow_pipeline_cfg pipe_cfg = {0};
     struct doca_gw_error err = {0};
     struct doca_flow_match match;
     struct doca_flow_actions actions = {0};
@@ -412,7 +412,7 @@ static void gw_pipeline_set_entry_tun(struct doca_flow_match *match,
  * @return 
  */
 struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
-                                                             struct doca_gw_pipeline *pipeline)
+                                                             struct doca_flow_pipeline *pipeline)
 {
     struct doca_flow_match match;
     struct doca_flow_actions actions = {0};
@@ -447,13 +447,13 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_inf
     monitor.flags |= DOCA_GW_METER;
     monitor.m.cir = 100 * 1000 / 8;// 100k
     monitor.m.cbs = monitor.m.cir / 8;
-    return doca_gw_pipeline_add_entry(0, pipeline, &match, &actions, &monitor,
+    return doca_flow_pipeline_add_entry(0, pipeline, &match, &actions, &monitor,
                                       sw_rss_fwd_tbl_port[pinfo->orig_port_id], &err);
 }
 
 
 struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_info *pinfo,
-                                                             struct doca_gw_pipeline *pipeline)
+                                                             struct doca_flow_pipeline *pipeline)
 {
     struct doca_flow_match match;
     struct doca_flow_actions actions = {0};
@@ -495,7 +495,7 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_inf
     //TODO: add src port mac
     memset(actions.encap.src_mac,0xff, sizeof(actions.encap.src_mac));
 
-    return doca_gw_pipeline_add_entry(0, pipeline, &match, &actions, &monitor,
+    return doca_flow_pipeline_add_entry(0, pipeline, &match, &actions, &monitor,
             fwd_tbl_port[gw_slb_peer_port(pinfo->orig_port_id)], &err);
 }
 

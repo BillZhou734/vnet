@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include "doca_gauge.h"
 
-struct doca_gw_pipeline;
+struct doca_flow_pipeline;
 
 struct doca_pipeline_kpi {
    uint64_t avg_cycles;
@@ -12,6 +12,6 @@ struct doca_pipeline_kpi {
    uint64_t load;
 };
 
-void doca_pipeline_kpi_get(struct doca_gw_pipeline *pl, struct doca_pipeline_kpi *kpi);
+void doca_pipeline_kpi_get(struct doca_flow_pipeline *pl, struct doca_pipeline_kpi *kpi);
 
 #endif

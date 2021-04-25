@@ -39,8 +39,8 @@ int doca_gw_init(struct doca_gw_cfg *cfg,struct doca_gw_error *err)
  *
  * @return 
  */
-struct doca_gw_pipelne_entry *doca_gw_pipeline_add_entry(uint16_t pipe_queue, 
-                      struct doca_gw_pipeline *pipeline, struct doca_flow_match *match,
+struct doca_gw_pipelne_entry *doca_flow_pipeline_add_entry(uint16_t pipe_queue, 
+                      struct doca_flow_pipeline *pipeline, struct doca_flow_match *match,
                       struct doca_flow_actions *actions,struct doca_flow_monitor *mon,
                       struct doca_fwd_tbl *fwd, struct doca_gw_error *err)
 {
@@ -108,7 +108,7 @@ int doca_flow_port_stop(struct doca_flow_port *port)
     return 0;
 }
 
-struct doca_gw_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error *err)
+struct doca_flow_pipeline *doca_gw_create_pipe(struct doca_flow_pipeline_cfg *cfg, struct doca_gw_error *err)
 {
 	if (cfg == NULL)
 		return NULL;

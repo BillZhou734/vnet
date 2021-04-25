@@ -11,8 +11,8 @@ struct doca_gw_pipelne_entry {
 };
 
 #define TMP_BUFF 128
-struct doca_gw_pipeline {
-	LIST_ENTRY(doca_gw_pipeline) next;
+struct doca_flow_pipeline {
+	LIST_ENTRY(doca_flow_pipeline) next;
 	char name[TMP_BUFF];
     void * handler;
 	uint32_t id;
@@ -29,7 +29,7 @@ struct doca_flow_port
     int      idx;
 
 	rte_spinlock_t pipe_lock;
-	LIST_HEAD(, doca_gw_pipeline) pipe_list;
+	LIST_HEAD(, doca_flow_pipeline) pipe_list;
     uint8_t  user_data[0];
 };
 

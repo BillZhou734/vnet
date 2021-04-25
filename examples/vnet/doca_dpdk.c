@@ -447,7 +447,7 @@ static int doca_gw_dpdk_build_item(struct doca_flow_match *match,
   	is encap buffer fixed or will be modifid by packet info?
 */
 static void
-doca_gw_dpdk_build_ether_header(uint8_t **header, struct doca_gw_pipeline_cfg *cfg)
+doca_gw_dpdk_build_ether_header(uint8_t **header, struct doca_flow_pipeline_cfg *cfg)
 {
 	struct rte_ether_hdr eth_hdr;
 	struct doca_flow_match *match = cfg->match;
@@ -470,7 +470,7 @@ doca_gw_dpdk_build_ether_header(uint8_t **header, struct doca_gw_pipeline_cfg *c
 
 static void
 doca_gw_dpdk_build_ipv4_header(uint8_t **header,
-			__rte_unused struct doca_gw_pipeline_cfg *cfg)
+			__rte_unused struct doca_flow_pipeline_cfg *cfg)
 {
 	struct rte_ipv4_hdr ipv4_hdr;
 
@@ -486,7 +486,7 @@ doca_gw_dpdk_build_ipv4_header(uint8_t **header,
 }
 
 static void
-doca_gw_dpdk_build_udp_header(uint8_t **header, struct doca_gw_pipeline_cfg *cfg)
+doca_gw_dpdk_build_udp_header(uint8_t **header, struct doca_flow_pipeline_cfg *cfg)
 {
 	struct rte_udp_hdr udp_hdr;
 
@@ -501,7 +501,7 @@ doca_gw_dpdk_build_udp_header(uint8_t **header, struct doca_gw_pipeline_cfg *cfg
 
 static void
 doca_gw_dpdk_build_vxlan_header(uint8_t **header,
-		struct doca_gw_pipeline_cfg *cfg)
+		struct doca_flow_pipeline_cfg *cfg)
 {
 	struct rte_vxlan_hdr vxlan_hdr;
 
@@ -513,7 +513,7 @@ doca_gw_dpdk_build_vxlan_header(uint8_t **header,
 
 static void
 doca_gw_dpdk_build_gre_header(uint8_t **header,
-		struct doca_gw_pipeline_cfg *cfg)
+		struct doca_flow_pipeline_cfg *cfg)
 {
 	uint32_t *key_data;
 	struct rte_gre_hdr gre_hdr;
@@ -538,7 +538,7 @@ struct endecap_layer doca_endecap_layers[] = {
 
 static void
 doca_gw_dpdk_build_endecap_data(uint8_t **header,
-			struct doca_gw_pipeline_cfg *cfg,
+			struct doca_flow_pipeline_cfg *cfg,
 			uint16_t flags)
 {
 	uint8_t idx;
@@ -552,7 +552,7 @@ doca_gw_dpdk_build_endecap_data(uint8_t **header,
 }
 
 static void doca_gw_dpdk_build_decap_action(struct doca_dpdk_action_entry *entry,
-									struct doca_gw_pipeline_cfg *cfg, uint8_t decap_layer)
+									struct doca_flow_pipeline_cfg *cfg, uint8_t decap_layer)
 {
 	uint8_t *header;
 	struct rte_flow_action *action = entry->action;
@@ -568,7 +568,7 @@ static void doca_gw_dpdk_build_decap_action(struct doca_dpdk_action_entry *entry
 }
 
 static int doca_gw_dpdk_build_tunnel_action(struct doca_dpdk_action_entry *entry,
-									struct doca_gw_pipeline_cfg *cfg)
+									struct doca_flow_pipeline_cfg *cfg)
 {
 	uint8_t layer;
 	struct doca_flow_match *match = cfg->match;
@@ -602,7 +602,7 @@ static int doca_gw_dpdk_modify_mac_action(struct doca_dpdk_action_entry *entry,
 }
 
 static void doca_gw_dpdk_build_mac_action(struct doca_dpdk_action_entry *entry,
-									struct doca_gw_pipeline_cfg *cfg, uint8_t type)
+									struct doca_flow_pipeline_cfg *cfg, uint8_t type)
 {
 	struct rte_flow_action *action = entry->action;
 	uint8_t *mac_addr;
@@ -631,7 +631,7 @@ static int doca_gw_dpdk_modify_ipv4_addr_action(struct doca_dpdk_action_entry *e
 }
 
 static void doca_gw_dpdk_build_ipv4_addr_action(struct doca_dpdk_action_entry *entry,
-									struct doca_gw_pipeline_cfg *cfg, uint8_t type)
+									struct doca_flow_pipeline_cfg *cfg, uint8_t type)
 {
 	struct rte_flow_action *action = entry->action;
 	struct doca_ip_addr *ip_addr;
@@ -660,7 +660,7 @@ static int doca_gw_dpdk_modify_l4_port_action(struct doca_dpdk_action_entry *ent
 }
 
 static void doca_gw_dpdk_build_l4_port_action(struct doca_dpdk_action_entry *entry,
-									struct doca_gw_pipeline_cfg *cfg, uint8_t type)
+									struct doca_flow_pipeline_cfg *cfg, uint8_t type)
 {
 	uint16_t l4port;
 	struct rte_flow_action *action = entry->action;
@@ -682,7 +682,7 @@ static void doca_gw_dpdk_build_dec_ttl_action(struct doca_dpdk_action_entry *ent
 	action->conf = NULL;
 }
 
-static int doca_gw_dpdk_build_action(struct doca_gw_pipeline_cfg *cfg,
+static int doca_gw_dpdk_build_action(struct doca_flow_pipeline_cfg *cfg,
 					struct doca_gw_pipe_dpdk_flow *pipe_flow)
 {
 #define NEXT_ACTION (&pipe_flow->action_entry[idx++])
@@ -1060,7 +1060,7 @@ doca_gw_dpdk_pipe_create_entry_flow(struct doca_gw_pipelne_entry *entry, struct 
 }
 
 struct doca_gw_pipelne_entry*
-doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipeline *pipeline,
+doca_gw_dpdk_pipe_create_flow(struct doca_flow_pipeline *pipeline,
 					struct doca_flow_match *match, struct doca_flow_actions *actions,
 					struct doca_flow_monitor *mon, struct doca_fwd_table_cfg *cfg,
 					struct doca_gw_error *err)
@@ -1155,7 +1155,7 @@ doca_gw_dpdk_init_port(uint16_t port_id)
  */
 static int
 doca_gw_dpdk_create_pipe_flow(struct doca_gw_pipe_dpdk_flow *flow, 
-							struct doca_gw_pipeline_cfg *cfg,
+							struct doca_flow_pipeline_cfg *cfg,
 							struct doca_gw_error *err)
 {
 	int ret;
@@ -1178,22 +1178,22 @@ doca_gw_dpdk_create_pipe_flow(struct doca_gw_pipe_dpdk_flow *flow,
 	return 0;
 }
 
-struct doca_gw_pipeline*
-doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error *err)
+struct doca_flow_pipeline*
+doca_gw_dpdk_create_pipe(struct doca_flow_pipeline_cfg *cfg, struct doca_gw_error *err)
 {
 	int ret;
 	uint32_t idx;
 	static uint32_t pipe_id = 1;
-	struct doca_gw_pipeline *pl;
+	struct doca_flow_pipeline *pl;
 	struct doca_gw_pipe_dpdk_flow *flow;
 
 	DOCA_LOG_DBG("port:%u create pipe:%s\n", cfg->port->port_id, cfg->name);
 	doca_dump_gw_match(cfg->match);
 	doca_dump_gw_actions(cfg->actions);
-	pl = malloc(sizeof(struct doca_gw_pipeline));
+	pl = malloc(sizeof(struct doca_flow_pipeline));
 	if (pl == NULL)
 		return NULL;
-	memset(pl,0,sizeof(struct doca_gw_pipeline));
+	memset(pl,0,sizeof(struct doca_flow_pipeline));
 	strcpy(pl->name, cfg->name);
 	LIST_INIT(&pl->entry_list);
 	rte_spinlock_init(&pl->entry_lock);
@@ -1262,7 +1262,7 @@ fail_port_start:
 	return NULL;
 }
 
-static void doca_gw_free_pipe(uint16_t portid, struct doca_gw_pipeline *pipe)
+static void doca_gw_free_pipe(uint16_t portid, struct doca_flow_pipeline *pipe)
 {
 	uint32_t nb_pipe_entry = 0;
 	struct doca_gw_pipelne_entry *entry;
@@ -1283,7 +1283,7 @@ static void doca_gw_free_pipe(uint16_t portid, struct doca_gw_pipeline *pipe)
 void doca_gw_dpdk_destroy(uint16_t port_id)
 {
 	struct doca_flow_port *port;
-	struct doca_gw_pipeline *pipe;
+	struct doca_flow_pipeline *pipe;
 
 	port = doca_get_port_byid(port_id);
 	if (port)
@@ -1301,7 +1301,7 @@ void doca_gw_dpdk_destroy(uint16_t port_id)
 void doca_gw_dpdk_dump_pipeline(uint16_t port_id)
 {
 	struct doca_flow_port *port;
-	struct doca_gw_pipeline *curr;
+	struct doca_flow_pipeline *curr;
 	static const char *nic_stats_border = "########################";
 
 	printf("\n  %s Pipe line info for port %-2d %s\n",
