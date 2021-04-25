@@ -454,7 +454,7 @@ doca_dump_rte_mbuff(const char *name, struct rte_mbuf *mb)
 	DOCA_LOG_DBG("%s", dump_buff);
 }
 
-void doca_dump_gw_actions(struct doca_gw_actions *actions)
+void doca_dump_gw_actions(struct doca_flow_actions *actions)
 {
 	char dump_buff[MAX_TMP_BUFF] = {'\0'};
 
@@ -492,7 +492,7 @@ static const char* doca_l4_type(uint8_t l4_type)
 	}
 }
 
-void doca_dump_gw_match(struct doca_gw_match *match)
+void doca_dump_gw_match(struct doca_flow_match *match)
 {
 	char dump_buff[MAX_TMP_BUFF] = {'\0'};
 

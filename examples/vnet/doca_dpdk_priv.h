@@ -23,7 +23,7 @@ struct doca_gw_pipeline {
 	LIST_HEAD(, doca_gw_pipelne_entry) entry_list;
 };
 
-struct doca_gw_port
+struct doca_flow_port
 {
     uint32_t port_id;
     int      idx;

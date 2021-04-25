@@ -95,7 +95,7 @@ struct doca_dpdk_item_entry {
 	uint8_t flags;
 	struct rte_flow_item *item;
 	struct doca_gw_item_data item_data;
-	int (*modify_item)(struct doca_dpdk_item_entry*, struct doca_gw_match*);
+	int (*modify_item)(struct doca_dpdk_item_entry*, struct doca_flow_match*);
 };
 
 struct doca_dpdk_action_mac_data {
@@ -155,7 +155,7 @@ struct rte_flow_action_data {
 struct doca_dpdk_action_entry {
 	struct rte_flow_action *action;
 	struct rte_flow_action_data action_data;
-	int (*modify_action)(struct doca_dpdk_action_entry*, struct doca_gw_actions*);
+	int (*modify_action)(struct doca_dpdk_action_entry*, struct doca_flow_actions*);
 };
 
 struct doca_gw_pipe_dpdk_flow {
@@ -247,7 +247,7 @@ doca_set_item_vni_max(void *vni)
 }
 
 static inline bool 
-doca_match_is_ipv4(struct doca_gw_match *match, uint8_t type)
+doca_match_is_ipv4(struct doca_flow_match *match, uint8_t type)
 {
 	struct doca_ip_addr ip_addr;
 
@@ -260,7 +260,7 @@ doca_match_is_ipv4(struct doca_gw_match *match, uint8_t type)
 }
 
 static inline rte_be16_t
-doca_gw_get_l3_protol(struct doca_gw_match *match, uint8_t type)
+doca_gw_get_l3_protol(struct doca_flow_match *match, uint8_t type)
 {
 	uint16_t protocol;
 	if (type == OUTER_MATCH && match->vlan_id)
@@ -271,14 +271,14 @@ doca_gw_get_l3_protol(struct doca_gw_match *match, uint8_t type)
 	return rte_cpu_to_be_16(protocol);
 }
 
-static inline bool doca_match_is_tcp(struct doca_gw_match *match)
+static inline bool doca_match_is_tcp(struct doca_flow_match *match)
 {
 	if (match->tun.type == DOCA_TUN_NONE)
 		return (match->out_l4_type == IPPROTO_TCP);
 	return (match->in_l4_type == IPPROTO_TCP);
 }
 
-static inline bool doca_match_is_udp(struct doca_gw_match *match)
+static inline bool doca_match_is_udp(struct doca_flow_match *match)
 {
 	if (match->tun.type == DOCA_TUN_NONE)
 		return (match->out_l4_type == IPPROTO_UDP);
@@ -292,8 +292,8 @@ doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error 
 
 struct doca_gw_pipelne_entry*
 doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipeline *pipeline,
-					struct doca_gw_match *match, struct doca_gw_actions *actions,
-					struct doca_gw_monitor *mon, struct doca_fwd_table_cfg *cfg,
+					struct doca_flow_match *match, struct doca_flow_actions *actions,
+					struct doca_flow_monitor *mon, struct doca_fwd_table_cfg *cfg,
 					struct doca_gw_error *err);
 
 
@@ -301,8 +301,8 @@ doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipeline *pipeline,
 int doca_gw_dpdk_init_port(uint16_t port_id);
 int doca_gw_dpdk_pipe_free_entry(uint16_t portid, struct doca_gw_pipelne_entry *entry);
 
-struct doca_gw_port *
-doca_gw_dpdk_port_start(struct doca_gw_port_cfg *cfg, struct doca_gw_error *err);
+struct doca_flow_port *
+doca_gw_dpdk_port_start(struct doca_flow_port_cfg *cfg, struct doca_gw_error *err);
 void doca_gw_dpdk_destroy(uint16_t port_id);
 void doca_gw_dpdk_dump_pipeline(uint16_t port_id);
 #endif

@@ -41,8 +41,8 @@ doca_dump_rte_flow(const char *name, uint16_t port_id,
 		const struct rte_flow_item items[],
 		const struct rte_flow_action actions[]);
 void doca_dump_rte_mbuff(const char *name, struct rte_mbuf *mb);
-void doca_dump_gw_match(struct doca_gw_match *match);
-void doca_dump_gw_actions(struct doca_gw_actions *actions);
+void doca_dump_gw_match(struct doca_flow_match *match);
+void doca_dump_gw_actions(struct doca_flow_actions *actions);
 
 
 #endif

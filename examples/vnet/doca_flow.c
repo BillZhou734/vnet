@@ -16,7 +16,7 @@ struct doca_fwd_tbl {
     struct doca_fwd_table_cfg cfg;
 };
 
-uint8_t *doca_gw_port_priv_data(struct doca_gw_port *p)
+uint8_t *doca_flow_port_priv_data(struct doca_flow_port *p)
 {
     return &p->user_data[0];
 }
@@ -40,8 +40,8 @@ int doca_gw_init(struct doca_gw_cfg *cfg,struct doca_gw_error *err)
  * @return 
  */
 struct doca_gw_pipelne_entry *doca_gw_pipeline_add_entry(uint16_t pipe_queue, 
-                      struct doca_gw_pipeline *pipeline, struct doca_gw_match *match,
-                      struct doca_gw_actions *actions,struct doca_gw_monitor *mon,
+                      struct doca_gw_pipeline *pipeline, struct doca_flow_match *match,
+                      struct doca_flow_actions *actions,struct doca_flow_monitor *mon,
                       struct doca_fwd_tbl *fwd, struct doca_gw_error *err)
 {
     if(pipeline == NULL || match == NULL || actions == NULL || mon == NULL)
@@ -67,9 +67,9 @@ int doca_gw_rm_entry(uint16_t pipe_queue, struct doca_gw_pipelne_entry *entry)
  *
  * @return 
  */
-struct doca_gw_port * doca_gw_port_start(struct doca_gw_port_cfg *cfg, struct doca_gw_error *err)
+struct doca_flow_port * doca_flow_port_start(struct doca_flow_port_cfg *cfg, struct doca_gw_error *err)
 {
-	struct doca_gw_port *port = NULL;
+	struct doca_flow_port *port = NULL;
 
 	if (cfg == NULL)
 		return NULL;
@@ -100,7 +100,7 @@ struct doca_gw_port * doca_gw_port_start(struct doca_gw_port_cfg *cfg, struct do
  *
  * @return 
  */
-int doca_gw_port_stop(struct doca_gw_port *port)
+int doca_flow_port_stop(struct doca_flow_port *port)
 {
     if (port != NULL) {
        printf("port id = %d stopped\n", port->port_id); 
