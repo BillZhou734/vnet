@@ -151,6 +151,11 @@ struct doca_dpdk_action_l4_port_data {
 	struct rte_flow_action_set_tp l4port;
 };
 
+struct doca_dpdk_action_queue_data {
+	struct rte_flow_action_queue conf;
+};
+
+
 struct doca_dpdk_action_data {
 	union {
 		struct doca_dpdk_action_jump_data jump;
@@ -161,6 +166,7 @@ struct doca_dpdk_action_data {
 		struct doca_dpdk_action_rawdecap_data rawdecap;
 		struct doca_dpdk_action_rawencap_data rawencap;
 		struct doca_dpdk_action_meter_data meter;
+		struct doca_dpdk_action_queue_data queue;
 	};
 };
 

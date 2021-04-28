@@ -48,6 +48,7 @@ DOCA_LOG_MODULE(main);
 static volatile bool force_quit;
 
 uint16_t nr_queues = 4;
+uint16_t nr_hairpinq = 0;
 uint16_t rx_only = 0;
 uint16_t hw_offload = 1;
 uint64_t stats_timer = 1;
@@ -166,8 +167,9 @@ static void gw_info_usage(const char *prgname)
 {
 	printf("%s [EAL options] -- \n"
 	       "  --log_level: set log level\n"
-	       "  --stats_timer: set interval to dump stats information"
+	       "  --stats_timer: set interval to dump stats information\n"
 	       "  --nr_queues: set queues number\n"
+	       "  --nr_hairpinq: set haripin queues number\n"
 	       "  --rx_only: set rx_only 0 or 1\n"
 	       "  --hw_offload: set hw offload 0 or 1\n",
 	       prgname);
@@ -178,7 +180,7 @@ static int gw_parse_uint32(const char *uint32_value)
 	char *end = NULL;
 	uint32_t value;
 
-	value = strtoul(uint32_value, &end, 16);
+	value = strtoul(uint32_value, &end, 10);
 	if ((uint32_value[0] == '\0') || (end == NULL) || (*end != '\0'))
 		return 0;
 	return value;
@@ -196,6 +198,7 @@ static int gw_info_parse_args(int argc, char **argv)
 		{"nr_queues", 1, NULL, 2},
 		{"rx_only", 1, NULL, 3},
 		{"hw_offload", 1, NULL, 4},
+		{"nr_hairpinq", 1, NULL, 5},
 		{NULL, 0, 0, 0},
 	};
 
@@ -231,6 +234,15 @@ static int gw_info_parse_args(int argc, char **argv)
 			hw_offload = gw_parse_uint32(optarg);
 			printf("set hw_offload:%u.\n", hw_offload == 0 ? 0 : 1);
 			break;
+		case 5:
+			nr_hairpinq = gw_parse_uint32(optarg);
+			if (nr_hairpinq > 1) {
+				printf("only support one haripin queue\n");
+				nr_hairpinq = 1;
+			}
+			printf("set nr_hairpinq:%u.\n", nr_hairpinq);
+			break;
+
 		default:
 			gw_info_usage(prgname);
 			return -1;
@@ -269,6 +281,9 @@ static int init_dpdk(int argc, char **argv)
 		DOCA_LOG_CRIT("no Ethernet ports found\n");
 		return -1;
 	}
+	stats_timer *= rte_get_timer_hz();
+	if (nr_queues > count_lcores())
+		nr_queues = count_lcores();
 	force_quit = false;
 	signal(SIGINT, signal_handler);
 	signal(SIGTERM, signal_handler);
@@ -280,22 +295,23 @@ static bool capture_en = 0;
 int main(int argc, char **argv)
 {
 	int i = 0;
+	uint16_t port_id;
+	struct gw_port_cfg port_cfg = {0};
 
 	if (init_dpdk(argc, argv)) {
 		rte_exit(EXIT_FAILURE, "Cannot init dpdk\n");
 		return -1;
 	}
-	stats_timer *= rte_get_timer_hz();
-	if (nr_queues > count_lcores())
-		nr_queues = count_lcores();
-	DOCA_LOG_INFO("init ports: nr_queues = %d\n", nr_queues);
 
-	gw_init_port(0, nr_queues);
-	gw_init_port(1, nr_queues);
+	port_cfg.n_queues = nr_queues;
+	port_cfg.n_hairpinqs = nr_hairpinq;
+	RTE_ETH_FOREACH_DEV(port_id) {
+		port_cfg.port_id = port_id;
+		gw_start_dpdk_port(&port_cfg);
+	}
 
 	vnf = gw_get_doca_vnf();
-	vnf->doca_vnf_init((void *)&nr_queues);
-
+	vnf->doca_vnf_init((void *)&port_cfg);
 	DOCA_LOG_INFO("VNF initiated!\n");
 	if (capture_en)
 		ph = doca_pcap_file_start(pcap_file_name);
@@ -310,7 +326,8 @@ int main(int argc, char **argv)
 	/* use main lcode as a thread.*/
 	gw_process_pkts(&core_params_arr[i]);
 	vnf->doca_vnf_destroy();
-	gw_close_port(0);
-	gw_close_port(1);
+
+	RTE_ETH_FOREACH_DEV(port_id)
+		gw_close_port(port_id);
 	return 0;
 }

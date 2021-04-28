@@ -763,7 +763,7 @@ static inline uint64_t doca_dpdk_get_rss_type(uint32_t rss_type)
 static int doca_dpdk_build_rss_action(struct doca_dpdk_action_entry *entry,
 				      struct doca_flow_fwd *fwd_cfg)
 {
-	int qidx;
+	uint32_t qidx;
 	struct rte_flow_action *action = entry->action;
 	struct doca_dpdk_action_rss_data *rss = &entry->action_data.rss;
 
@@ -778,12 +778,28 @@ static int doca_dpdk_build_rss_action(struct doca_dpdk_action_entry *entry,
 	return 0;
 }
 
+static int doca_dpdk_build_queue_action(struct doca_dpdk_action_entry *entry,
+				      uint16_t queue_idx)
+{
+	struct rte_flow_action *action = entry->action;
+	struct doca_dpdk_action_queue_data *queue = &entry->action_data.queue;
+
+	queue->conf.index = queue_idx;
+	action->type = RTE_FLOW_ACTION_TYPE_QUEUE;
+	action->conf = &queue->conf;
+	return 0;
+}
+
 static int doca_dpdk_build_fwd(struct doca_dpdk_pipe *pipe,
 			       struct doca_flow_fwd *fwd_cfg)
 {
 	switch (fwd_cfg->type) {
 	case DOCA_FWD_RSS:
 		doca_dpdk_build_rss_action(ENTRY_ACTION, fwd_cfg);
+		break;
+	case DOCA_FWD_PORT:
+		if (!pipe->attr.transfer && fwd_cfg->port.hairpinq)
+			doca_dpdk_build_queue_action(action_entry, fwd_cfg->port.hairpinq);
 		break;
 	default:
 		return 1;

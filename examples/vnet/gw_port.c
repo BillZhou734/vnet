@@ -44,10 +44,16 @@ static void gw_assert_link_status(int port_id)
 		rte_exit(EXIT_FAILURE, ":: error: link is still down\n");
 }
 
-int gw_init_port(int port_id, int nr_queues)
+int gw_start_dpdk_port(struct gw_port_cfg *port)
 {
 	int ret;
-	uint16_t i;
+	uint16_t i, total_queues, std_queue;
+	uint16_t port_id = port->port_id;
+	uint16_t nr_queues = port->n_queues;
+	struct rte_eth_hairpin_cap cap;
+	struct rte_eth_hairpin_conf hairpin_conf = {
+		.peer_count = 1,
+	};	
 	struct rte_eth_conf port_conf = {
 		.rxmode = {
 			.split_hdr_size = 0,
@@ -66,8 +72,10 @@ int gw_init_port(int port_id, int nr_queues)
 	struct rte_eth_rxconf rxq_conf;
 	struct rte_eth_dev_info dev_info;
 
+	DOCA_LOG_INFO("initializing port:%d,queue|hairpinq:%d|%d",
+		port_id, nr_queues, port->n_hairpinqs);
 	if (mbuf_pool == NULL) {
-		mbuf_pool = rte_pktmbuf_pool_create("mbuf_pool", 4096, 128, 0,
+		mbuf_pool = rte_pktmbuf_pool_create("mbuf_pool", 4096 * nr_queues, 128, 0,
 						    RTE_MBUF_DEFAULT_BUF_SIZE,
 						    rte_socket_id());
 		if (mbuf_pool == NULL) {
@@ -75,7 +83,7 @@ int gw_init_port(int port_id, int nr_queues)
 			return -1;
 		}
 	}
-
+	total_queues = nr_queues + port->n_hairpinqs;
 	ret = rte_eth_dev_info_get(port_id, &dev_info);
 	if (ret != 0)
 		rte_exit(EXIT_FAILURE,
@@ -83,19 +91,16 @@ int gw_init_port(int port_id, int nr_queues)
 			 port_id, strerror(-ret));
 
 	port_conf.txmode.offloads &= dev_info.tx_offload_capa;
-	DOCA_LOG_INFO("initializing port: %d\n", port_id);
-	ret = rte_eth_dev_configure(port_id, nr_queues, nr_queues, &port_conf);
+	ret = rte_eth_dev_configure(port_id, total_queues, total_queues, &port_conf);
 	if (ret < 0) {
 		rte_exit(EXIT_FAILURE,
 			 ":: cannot configure device: err=%d, port=%u\n", ret,
 			 port_id);
 	}
-
 	rxq_conf = dev_info.default_rxconf;
 	rxq_conf.offloads = port_conf.rxmode.offloads;
-	for (i = 0; i < nr_queues; i++) {
-		ret = rte_eth_rx_queue_setup(port_id, i, 512,
-					     rte_eth_dev_socket_id(port_id),
+	for (i = 0; i < total_queues; i++) {
+		ret = rte_eth_rx_queue_setup(port_id, i, port->nb_desc, rte_eth_dev_socket_id(port_id),
 					     &rxq_conf, mbuf_pool);
 		if (ret < 0) {
 			rte_exit(EXIT_FAILURE,
@@ -106,10 +111,8 @@ int gw_init_port(int port_id, int nr_queues)
 
 	txq_conf = dev_info.default_txconf;
 	txq_conf.offloads = port_conf.txmode.offloads;
-
-	for (i = 0; i < nr_queues; i++) {
-		ret = rte_eth_tx_queue_setup(
-		    port_id, i, 512, rte_eth_dev_socket_id(port_id), &txq_conf);
+	for (i = 0; i < total_queues; i++) {
+		ret = rte_eth_tx_queue_setup(port_id, i, port->nb_desc, rte_eth_dev_socket_id(port_id), &txq_conf);
 		if (ret < 0) {
 			rte_exit(EXIT_FAILURE,
 				 ":: Tx queue setup failed: err=%d, port=%u\n",
@@ -123,6 +126,19 @@ int gw_init_port(int port_id, int nr_queues)
 			 ":: promiscuous mode enable failed: err=%s, port=%u\n",
 			 rte_strerror(-ret), port_id);
 
+	if (port->n_hairpinqs) {
+		for (i = nr_queues, std_queue = 0; i < total_queues; i++, std_queue++) {
+			hairpin_conf.peers[0].port = port_id;
+				hairpin_conf.peers[0].queue = nr_queues + std_queue;
+				ret = rte_eth_rx_hairpin_queue_setup(port_id, i, 512, &hairpin_conf);
+				if (ret != 0)
+					rte_exit(EXIT_FAILURE, "Hairpin rx queue setup failed: err=%d, port=%u\n", ret, port_id);
+				
+				ret = rte_eth_tx_hairpin_queue_setup(port_id, i, 512, &hairpin_conf);
+				if (ret != 0)
+					rte_exit(EXIT_FAILURE, "Hairpin tx queue setup failed: err=%d, port=%u\n", ret, port_id);
+		}
+	}
 	ret = rte_eth_dev_start(port_id);
 	if (ret < 0) {
 		rte_exit(EXIT_FAILURE, "rte_eth_dev_start:err=%d, port=%u\n",

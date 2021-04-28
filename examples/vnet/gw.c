@@ -118,12 +118,13 @@ static uint16_t gw_slb_peer_port(uint16_t port_id)
 struct doca_flow_fwd *sw_rss_fwd_tbl_port[GW_MAX_PORT_ID];
 struct doca_flow_fwd *fwd_tbl_port[GW_MAX_PORT_ID];
 
-static struct doca_flow_fwd *gw_build_port_fwd(int port_id)
+static struct doca_flow_fwd *gw_build_port_fwd(struct gw_port_cfg *port_cfg)
 {
         struct doca_flow_fwd *fwd = malloc(sizeof(struct doca_flow_fwd));
         memset(fwd,0,sizeof(struct doca_flow_fwd));
         fwd->type = DOCA_FWD_PORT;
-	fwd->port.id = port_id;
+	fwd->port.id = port_cfg->port_id;
+	fwd->port.hairpinq = port_cfg->n_queues;
 	return fwd;
 }
 
@@ -232,7 +233,7 @@ static void gw_fill_monior(struct doca_flow_monitor *monitor)
 	struct doca_flow_fwd *fwd = &monitor->m.fwd;
 
 	monitor->flags = DOCA_FLOW_COUNT;
-	monitor->flags |= DOCA_FLOW_METER;
+	/*monitor->flags |= DOCA_FLOW_METER;*/
 	monitor->m.cir = 1000000 * 1000 / 8;
 	monitor->m.cbs = monitor->m.cir / 8;
 	queues = malloc(sizeof(uint16_t) * n_queues);
@@ -384,7 +385,7 @@ struct doca_flow_port *gw_init_doca_port(struct gw_port_cfg *port_cfg)
 	*((struct gw_port_cfg *)doca_flow_port_priv_data(port)) = *port_cfg;
 	sw_rss_fwd_tbl_port[port_cfg->port_id] =
 	    gw_build_rss_fwd(port_cfg->n_queues);
-	fwd_tbl_port[port_cfg->port_id] = gw_build_port_fwd(port_cfg->port_id);
+	fwd_tbl_port[port_cfg->port_id] = gw_build_port_fwd(port_cfg);
 	return port;
 }
 
@@ -413,7 +414,7 @@ static void gw_pipe_set_entry_tun(struct doca_flow_match *match,
  *
  * @return
  */
-struct doca_flow_pipe_entry *
+static struct doca_flow_pipe_entry *
 gw_pipe_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
 			       struct doca_flow_pipe *pipe)
 {
@@ -445,7 +446,7 @@ gw_pipe_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
 	    rte_cpu_to_be_32(0x25000000);
 	return doca_flow_pipe_add_entry(
 	    0, pipe, &match, &actions, &monitor,
-	    sw_rss_fwd_tbl_port[pinfo->orig_port_id], &err);
+	    fwd_tbl_port[pinfo->orig_port_id], &err);
 }
 
 struct doca_flow_pipe_entry *
@@ -494,11 +495,12 @@ gw_pipe_add_ol_to_ol_entry(struct doca_pkt_info *pinfo,
 	memset(actions.encap.src_mac, 0xff, sizeof(actions.encap.src_mac));
 	return doca_flow_pipe_add_entry(
 	    0, pipe, &match, &actions, &monitor,
+	    /*why? from port 0 to port1's hairpin queue*/
 	    fwd_tbl_port[gw_slb_peer_port(pinfo->orig_port_id)],
             &err);
 }
 
-void gw_rm_pipe_entry(struct doca_flow_pipe_entry *entry)
+static void gw_rm_pipe_entry(struct doca_flow_pipe_entry *entry)
 {
 	doca_flow_rm_entry(0, entry);
 }
@@ -528,13 +530,13 @@ fail_init:
 	return -1;
 }
 
-static int gw_init_doca_ports_and_pipes(int ret, int nr_queues)
+static int gw_init_doca_ports_and_pipes(int ret, struct gw_port_cfg *port_cfg)
 {
-	struct gw_port_cfg cfg_port0 = {.n_queues = nr_queues, .port_id = 0};
-	struct gw_port_cfg cfg_port1 = {.n_queues = nr_queues, .port_id = 1};
 	struct doca_flow_error err = {0};
-	struct doca_flow_cfg cfg = {.total_sessions = GW_MAX_FLOWS,
-                                    .queues = nr_queues};
+	struct doca_flow_cfg cfg = {
+		.total_sessions = GW_MAX_FLOWS,
+		.queues = port_cfg->n_queues,
+	};
 
 	if (ret)
 		return ret;
@@ -544,8 +546,10 @@ static int gw_init_doca_ports_and_pipes(int ret, int nr_queues)
 		return -1;
 	}
 	/* define doca ports */
-	gw_ins->port0 = gw_init_doca_port(&cfg_port0);
-	gw_ins->port1 = gw_init_doca_port(&cfg_port1);
+	port_cfg->port_id = 0;
+	gw_ins->port0 = gw_init_doca_port(port_cfg);
+	port_cfg->port_id = 1;
+	gw_ins->port1 = gw_init_doca_port(port_cfg);
 
 	if (gw_ins->port0 == NULL || gw_ins->port1 == NULL) {
 		DOCA_LOG_ERR("failed to start port %s", err.message);
@@ -607,12 +611,12 @@ static int gw_init_lb(int ret)
 
 static int gw_init(void *p)
 {
-	int queues = *((int *)p);
+	struct gw_port_cfg *cfg = (struct gw_port_cfg *)p;
 	int ret = 0;
 
 	ret |= gw_create();
 	ret |= gw_init_lb(ret);
-	ret |= gw_init_doca_ports_and_pipes(ret, queues);
+	ret |= gw_init_doca_ports_and_pipes(ret, cfg);
 
 	return ret;
 }

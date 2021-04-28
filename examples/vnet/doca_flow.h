@@ -189,11 +189,12 @@ struct doca_flow_fwd {
         struct fwd_rss {
                 uint32_t rss_flags;
                 uint16_t *queues;
-                int num_queues;
+                uint32_t num_queues;
         } rss;
 
         struct port {
                 int id;
+			uint16_t hairpinq;
         } port;
 
         struct next_pipelne {

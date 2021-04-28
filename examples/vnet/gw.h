@@ -7,8 +7,10 @@
 #include "doca_pkt.h"
 
 struct gw_port_cfg {
-	uint16_t n_queues;
 	uint16_t port_id;
+	uint16_t nb_desc;
+	uint16_t n_queues;
+	uint16_t n_hairpinqs;
 };
 
 /**
