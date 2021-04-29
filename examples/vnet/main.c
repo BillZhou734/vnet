@@ -88,6 +88,7 @@ static void gw_process_offload(struct rte_mbuf *mbuf)
 	struct doca_pkt_info pinfo;
 
 	memset(&pinfo, 0, sizeof(struct doca_pkt_info));
+	doca_dump_rte_mbuff("", mbuf);
 	if (doca_parse_packet(VNF_PKT_L2(mbuf), VNF_PKT_LEN(mbuf), &pinfo))
 		return;
 	pinfo.orig_data = mbuf;
@@ -211,12 +212,10 @@ static int gw_info_parse_args(int argc, char **argv)
 		switch (opt) {
 		case 0:
 			log_level = gw_parse_uint32(optarg);
-			printf("set debug_level:%u\n", log_level);
 			doca_set_log_level(log_level);
 			break;
 		case 1:
 			stats_timer = gw_parse_uint32(optarg);
-			printf("set stats_timer:%lu\n", stats_timer);
 			break;
 		case 2:
 			nr_queues = gw_parse_uint32(optarg);
@@ -224,15 +223,12 @@ static int gw_info_parse_args(int argc, char **argv)
 				printf("nr_queues should be 2 - 16\n");
 				return -1;
 			}
-			printf("set nr_queues:%u.\n", nr_queues);
 			break;
 		case 3:
 			rx_only = gw_parse_uint32(optarg);
-			printf("set rx_only:%u.\n", rx_only == 0 ? 0 : 1);
 			break;
 		case 4:
 			hw_offload = gw_parse_uint32(optarg);
-			printf("set hw_offload:%u.\n", hw_offload == 0 ? 0 : 1);
 			break;
 		case 5:
 			nr_hairpinq = gw_parse_uint32(optarg);
@@ -240,9 +236,7 @@ static int gw_info_parse_args(int argc, char **argv)
 				printf("only support one haripin queue\n");
 				nr_hairpinq = 1;
 			}
-			printf("set nr_hairpinq:%u.\n", nr_hairpinq);
 			break;
-
 		default:
 			gw_info_usage(prgname);
 			return -1;

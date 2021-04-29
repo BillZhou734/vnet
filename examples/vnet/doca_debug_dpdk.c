@@ -178,7 +178,7 @@ void doca_dump_rte_flow(const char *name, uint16_t port_id,
 		return;
 	memset(dump_buff, 0x0, sizeof(dump_buff));
 	memset(prefix_buff, 0x0, sizeof(prefix_buff));
-	doca_log_buff("%s\nflow create %u %s %s group %u priority %u pattern ",
+	doca_log_buff("  %s\nflow create %u %s %s group %u priority %u pattern ",
 		      name, port_id, attr->ingress ? "ingress" : "egress",
 		      attr->transfer ? "transfer" : "", attr->group,
 		      attr->priority);
@@ -229,6 +229,8 @@ void doca_dump_rte_flow(const char *name, uint16_t port_id,
 		const struct rte_flow_action_set_tp *set_tp;
 		const struct rte_flow_action_rss *rss;
 		const struct rte_flow_action_meter *meter;
+		const struct rte_flow_action_raw_encap *encap;
+		const struct rte_flow_action_raw_decap *decap;
 
 		switch (action_type) {
 		case RTE_FLOW_ACTION_TYPE_MARK:
@@ -301,10 +303,12 @@ void doca_dump_rte_flow(const char *name, uint16_t port_id,
 			doca_log_buff("port_id id %u / ", portid->id);
 			break;
 		case RTE_FLOW_ACTION_TYPE_RAW_DECAP:
-			doca_log_buff("raw_decap / "); /*need dump decap buff?*/
+			decap = (const struct rte_flow_action_raw_decap*)actions->conf;
+			doca_log_buff("raw_decap (size:%zu)/ ", decap->size); /*need dump decap buff?*/
 			break;
 		case RTE_FLOW_ACTION_TYPE_RAW_ENCAP:
-			doca_log_buff("raw_encap / ");
+			encap = (const struct rte_flow_action_raw_encap*)actions->conf;
+			doca_log_buff("raw_encap (size:%zu)/ ", encap->size);
 			break;
 		case RTE_FLOW_ACTION_TYPE_DROP:
 			doca_log_buff("drop / ");
@@ -322,7 +326,7 @@ void doca_dump_rte_flow(const char *name, uint16_t port_id,
 		}
 	}
 	doca_log_buff("end ");
-	DOCA_LOG_DBG("%s\n", dump_buff);
+	DOCA_LOG_DBG("%s", dump_buff);
 }
 
 static uint8_t doca_dump_ethhdr(uint8_t *data, uint32_t *len)

@@ -50,7 +50,6 @@ int gw_start_dpdk_port(struct gw_port_cfg *port)
 	uint16_t i, total_queues, std_queue;
 	uint16_t port_id = port->port_id;
 	uint16_t nr_queues = port->n_queues;
-	struct rte_eth_hairpin_cap cap;
 	struct rte_eth_hairpin_conf hairpin_conf = {
 		.peer_count = 1,
 	};	

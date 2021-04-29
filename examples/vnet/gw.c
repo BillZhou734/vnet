@@ -194,7 +194,7 @@ static void gw_build_match_tun_and_5tuple(struct doca_flow_match *match)
 static void
 gw_build_decap_inner_modify_actions(struct doca_flow_actions *actions)
 {
-	actions->decap = false;
+	actions->decap = true;
 	actions->mod_dst_ip.a.ipv4_addr = 0xffffffff;
 }
 
@@ -212,6 +212,15 @@ static void gw_build_encap_tun(struct doca_flow_actions *actions)
 	default:
 		DOCA_LOG_ERR("unsupported tunnel type %d", gw_tun_type);
 	}
+}
+
+static void gw_build_gre_eth_data(struct doca_flow_actions *actions)
+{
+	uint8_t src_mac[] = {0x12, 0x15, 0x16, 0x17, 0x18, 0x19};
+	uint8_t dst_mac[] = {0x24, 0x25, 0x26, 0x27, 0x28, 0x29};
+
+	memcpy(actions->encap.src_mac, src_mac, sizeof(src_mac));
+	memcpy(actions->encap.dst_mac, dst_mac, sizeof(dst_mac));
 }
 
 static void gw_build_encap_actions(struct doca_flow_actions *actions)
@@ -260,7 +269,7 @@ static void gw_fill_monior(struct doca_flow_monitor *monitor)
  *
  * @return
  */
-static struct doca_flow_pipe *gw_build_ul_ol(struct doca_flow_port *port)
+static struct doca_flow_pipe *gw_build_ol_to_ul(struct doca_flow_port *port)
 {
 	struct doca_flow_pipe_cfg pipe_cfg = {0};
 	struct doca_flow_error err = {0};
@@ -273,8 +282,9 @@ static struct doca_flow_pipe *gw_build_ul_ol(struct doca_flow_port *port)
 	gw_build_match_tun_and_5tuple(&match);
 	gw_build_decap_inner_modify_actions(&actions);
 	gw_fill_monior(&monitor);
-
-	pipe_cfg.name = "overlay-to-underlay";
+	if (match.tun.type == DOCA_TUN_GRE)
+		gw_build_gre_eth_data(&actions);
+	pipe_cfg.name = "match-gre-overlay-to-underlay";
 	pipe_cfg.port = port;
 	pipe_cfg.match = &match;
 	pipe_cfg.actions = &actions;
@@ -441,6 +451,7 @@ gw_pipe_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
 	match.in_src_port = doca_pinfo_inner_src_port(pinfo);
 	match.in_dst_port = doca_pinfo_inner_dst_port(pinfo);
 
+	actions.decap = 1;
 	actions.mod_dst_ip.a.ipv4_addr =
 	    (doca_pinfo_inner_ipv4_dst(pinfo) & rte_cpu_to_be_32(0x00ffffff)) |
 	    rte_cpu_to_be_32(0x25000000);
@@ -449,7 +460,7 @@ gw_pipe_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
 	    fwd_tbl_port[pinfo->orig_port_id], &err);
 }
 
-struct doca_flow_pipe_entry *
+static struct doca_flow_pipe_entry *
 gw_pipe_add_ol_to_ol_entry(struct doca_pkt_info *pinfo,
 			       struct doca_flow_pipe *pipe)
 {
@@ -570,8 +581,8 @@ static int gw_init_doca_ports_and_pipes(int ret, struct gw_port_cfg *port_cfg)
 
 	/* init pipes */
 	/* overlay to under lay pipe */
-	gw_ins->p_over_under[0] = gw_build_ul_ol(gw_ins->port0);
-	gw_ins->p_over_under[1] = gw_build_ul_ol(gw_ins->port1);
+	gw_ins->p_over_under[0] = gw_build_ol_to_ul(gw_ins->port0);
+	gw_ins->p_over_under[1] = gw_build_ol_to_ul(gw_ins->port1);
 
 	gw_ins->p_ol_ol[0] = gw_build_ol_to_ol(gw_ins->port0);
 	gw_ins->p_ol_ol[1] = gw_build_ol_to_ol(gw_ins->port1);

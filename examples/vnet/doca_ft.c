@@ -188,7 +188,7 @@ static struct doca_ft_entry *_doca_ft_find(struct doca_ft *ft,
 	struct doca_ft_entry *node;
 
 	idx = key->rss_hash & ft->cfg.mask;
-	DOCA_LOG_DBG("looking for index%d", idx);
+	//DOCA_LOG_DBG("looking for index%d", idx);
 	first = &ft->buckets[idx].head;
 	LIST_FOREACH(node, first, next)
 	{
