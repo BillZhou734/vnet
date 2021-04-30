@@ -15,6 +15,9 @@
 #define DOCA_GET_DPORT(match, type)                                            \
 	((type == OUTER_MATCH) ? match->out_dst_port : match->in_dst_port)
 
+#define PIPE_ACTION (&pipe->action_entry[pipe->nb_actions_pipe++])
+#define ENTRY_ACTION (&pipe->action_entry[pipe->nb_actions_pipe++])
+
 #define INNER_MATCH 1
 #define OUTER_MATCH 2
 #define MAX_ITEMS 12

@@ -28,13 +28,13 @@ struct doca_flow_pipe {
 	uint32_t pipe_entry_id;
 	uint32_t nb_pipe_entrys;
 	struct doca_flow_fwd fwd;
-        struct doca_dpdk_pipe flow;
+	struct doca_dpdk_pipe flow;
 	rte_spinlock_t entry_lock;
 	LIST_HEAD(, doca_flow_pipe_entry) entry_list[0];
 };
 
 struct doca_flow_port {
-	uint32_t port_id;
+	uint16_t port_id;
 	int idx;
 
 	rte_spinlock_t pipe_lock;
