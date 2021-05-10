@@ -240,6 +240,11 @@ static inline void doca_set_mac_max(void *mac_addr)
 	addr[2] = UINT16_MAX;
 }
 
+static inline void doca_mac_copy(uint8_t *from, struct rte_ether_addr *to)
+{
+	rte_ether_addr_copy((const struct rte_ether_addr *)from, to);
+}
+
 static inline bool doca_is_mac_max(void *mac_addr)
 {
 	uint16_t *addr = mac_addr;

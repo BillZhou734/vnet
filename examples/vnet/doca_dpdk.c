@@ -74,62 +74,59 @@ void doca_dpdk_enable_acl(void)
 }
 
 static int doca_dpdk_modify_eth_item(struct doca_dpdk_item_entry *entry,
-				     struct doca_flow_match *match)
+				     struct doca_flow_match *match_spec, struct doca_flow_match *match_mask)
 {
 	struct rte_flow_item_eth *spec = &entry->item_data.eth.spec;
+	struct rte_flow_item_eth *mask = &entry->item_data.eth.mask;
 
-	if ((entry->flags & DOCA_MODIFY_SMAC) &&
-	    !doca_is_mac_zero(match->out_src_mac))
-		rte_ether_addr_copy(
-		    (const struct rte_ether_addr *)match->out_src_mac,
-		    &spec->src);
-	if ((entry->flags & DOCA_MODIFY_DMAC) &&
-	    !doca_is_mac_zero(match->out_dst_mac))
-		rte_ether_addr_copy(
-		    (const struct rte_ether_addr *)match->out_dst_mac,
-		    &spec->dst);
+	if ((entry->flags & DOCA_MODIFY_SMAC)) {
+	    if (!doca_is_mac_zero(match_spec->out_src_mac)) {
+	    	doca_mac_copy(match_spec->out_src_mac, &spec->src);
+			if (match_mask && !doca_is_mac_zero(match_mask->out_src_mac))
+				doca_mac_copy(match_mask->out_src_mac, &mask->src);
+		}
+	}
+	if ((entry->flags & DOCA_MODIFY_DMAC)) {
+	    if (!doca_is_mac_zero(match_spec->out_dst_mac)) {
+			doca_mac_copy(match_spec->out_dst_mac, &spec->dst);
+			if (match_mask && !doca_is_mac_zero(match_mask->out_dst_mac))
+				doca_mac_copy(match_mask->out_dst_mac, &mask->dst);
+	    }
+	}
 	return 0;
 }
 
 static void doca_dpdk_build_eth_flow_item(struct doca_dpdk_item_entry *entry,
-					  struct doca_flow_match *match, struct doca_flow_match *match_mask)
+					  struct doca_flow_match *match_spec, struct doca_flow_match *match_mask)
 {
 	struct rte_flow_item *flow_item = entry->item;
 	struct rte_flow_item_eth *spec = &entry->item_data.eth.spec;
 	struct rte_flow_item_eth *mask = &entry->item_data.eth.mask;
 
 	flow_item->type = RTE_FLOW_ITEM_TYPE_ETH;
-	if (!doca_is_mac_zero(match->out_src_mac)) {
+	if (!doca_is_mac_zero(match_spec->out_src_mac)) {
         if (!match_mask) {
 		    doca_set_mac_max(mask->src.addr_bytes);
         } else {
-		    rte_ether_addr_copy(
-		        (const struct rte_ether_addr *)match_mask->out_src_mac,
-		        &mask->src);
+        	doca_mac_copy(match_mask->out_src_mac, &mask->src);
         }
-		rte_ether_addr_copy(
-		    (const struct rte_ether_addr *)match->out_src_mac,
-		    &spec->src);
-		if (doca_is_mac_max(match->out_src_mac))
+		doca_mac_copy(match_spec->out_src_mac, &spec->src);
+		if (doca_is_mac_max(match_spec->out_src_mac))
 			entry->flags |= DOCA_MODIFY_SMAC;
 	}
-	if (!doca_is_mac_zero(match->out_dst_mac)) {
+	if (!doca_is_mac_zero(match_spec->out_dst_mac)) {
         if (!match_mask) {
 		    doca_set_mac_max(mask->dst.addr_bytes);
         } else {
-		    rte_ether_addr_copy(
-               (const struct rte_ether_addr *)match_mask->out_dst_mac,
-               &mask->dst);
+        	doca_mac_copy(match_mask->out_dst_mac, &mask->dst);
         }
-		rte_ether_addr_copy(
-		    (const struct rte_ether_addr *)match->out_dst_mac,
-		    &spec->dst);
-		if (doca_is_mac_max(match->out_dst_mac))
+		doca_mac_copy(match_spec->out_dst_mac, &spec->dst);
+		if (doca_is_mac_max(match_spec->out_dst_mac))
 			entry->flags |= DOCA_MODIFY_DMAC;
 	}
-	if (match->vlan_id)
+	if (match_spec->vlan_id)
 		spec->has_vlan = 1;
-	spec->type = doca_dpdk_get_l3_protol(match, OUTER_MATCH);
+	spec->type = doca_dpdk_get_l3_protol(match_spec, OUTER_MATCH);
 	mask->type = UINT16_MAX;
 	flow_item->spec = spec;
 	flow_item->mask = mask;
@@ -138,12 +135,16 @@ static void doca_dpdk_build_eth_flow_item(struct doca_dpdk_item_entry *entry,
 }
 
 static int doca_dpdk_modify_vlan_item(struct doca_dpdk_item_entry *entry,
-				      struct doca_flow_match *match)
+				      struct doca_flow_match *match_spec, struct doca_flow_match *match_mask)
 {
 	struct rte_flow_item_vlan *spec = &entry->item_data.vlan.spec;
+	struct rte_flow_item_vlan *mask = &entry->item_data.vlan.mask;
 
-	if ((entry->flags & DOCA_MODIFY_VLAN_ID) && match->vlan_id)
-		spec->tci = RTE_BE16(match->vlan_id);
+	if ((entry->flags & DOCA_MODIFY_VLAN_ID) && match_spec->vlan_id) {
+		spec->tci = RTE_BE16(match_spec->vlan_id);
+		if (match_mask && match_mask->vlan_id)
+			mask->tci = RTE_BE16(match_mask->vlan_id);
+	}
 	return 0;
 }
 
@@ -168,17 +169,27 @@ doca_dpdk_build_vlan_item(__rte_unused struct doca_dpdk_item_entry *entry,
 }
 
 static int doca_dpdk_modify_ipv4_item(struct doca_dpdk_item_entry *entry,
-				      struct doca_flow_match *match)
+				      struct doca_flow_match *match_spec,
+				      struct doca_flow_match *match_mask)
 {
 	uint8_t layer = entry->item_data.ipv4.match_layer;
 	struct rte_flow_item_ipv4 *spec = &entry->item_data.ipv4.spec;
-	struct doca_ip_addr src_ip = DOCA_GET_SRC_IP(match, layer);
-	struct doca_ip_addr dst_ip = DOCA_GET_DST_IP(match, layer);
+	struct rte_flow_item_ipv4 *mask = &entry->item_data.ipv4.spec;
+	struct doca_ip_addr src_ip = DOCA_GET_SRC_IP(match_spec, layer);
+	struct doca_ip_addr dst_ip = DOCA_GET_DST_IP(match_spec, layer);
+	struct doca_ip_addr mask_src_ip = DOCA_GET_SRC_IP(match_mask, layer);
+	struct doca_ip_addr mask_dst_ip = DOCA_GET_DST_IP(match_mask, layer);
 
-	if ((entry->flags & DOCA_MODIFY_SIP) && src_ip.a.ipv4_addr)
+	if ((entry->flags & DOCA_MODIFY_SIP) && src_ip.a.ipv4_addr) {
 		spec->hdr.src_addr = src_ip.a.ipv4_addr;
-	if ((entry->flags & DOCA_MODIFY_DIP) && dst_ip.a.ipv4_addr)
+		if (mask && mask_src_ip.a.ipv4_addr)
+			mask->hdr.src_addr = mask_src_ip.a.ipv4_addr;
+	}
+	if ((entry->flags & DOCA_MODIFY_DIP) && dst_ip.a.ipv4_addr) {
 		spec->hdr.dst_addr = dst_ip.a.ipv4_addr;
+		if (mask && mask_dst_ip.a.ipv4_addr)
+			mask->hdr.dst_addr = mask_dst_ip.a.ipv4_addr;
+	}
 	return 0;
 }
 
@@ -233,7 +244,8 @@ static void doca_dpdk_build_ipv4_flow_item(struct doca_dpdk_item_entry *entry,
  */
 static int
 doca_dpdk_modify_ipv6_item(__rte_unused struct doca_dpdk_item_entry *entry,
-			   __rte_unused struct doca_flow_match *match)
+			   __rte_unused struct doca_flow_match *match_spec,
+			   __rte_unused struct doca_flow_match *match_mask)
 {
 	return 0;
 }
@@ -284,12 +296,16 @@ static void doca_dpdk_build_ipv6_flow_item(struct doca_dpdk_item_entry *entry,
 }
 
 static int doca_dpdk_modify_vxlan_item(struct doca_dpdk_item_entry *entry,
-				       struct doca_flow_match *match)
+				       struct doca_flow_match *match_spec, struct doca_flow_match *match_mask)
 {
 	struct rte_flow_item_vxlan *spec = &entry->item_data.vxlan.spec;
+	struct rte_flow_item_vxlan *mask = &entry->item_data.vxlan.mask;
 
-	if (match->tun.vxlan.tun_id)
-		memcpy(spec->vni, (uint8_t *)(&match->tun.vxlan.tun_id), 3);
+	if (match_spec->tun.vxlan.tun_id) {
+		memcpy(spec->vni, (uint8_t *)(&match_spec->tun.vxlan.tun_id), 3);
+		if (match_mask)
+			memcpy(mask->vni, (uint8_t *)(&match_mask->tun.vxlan.tun_id), 3);
+	}
 	return 0;
 }
 
@@ -325,12 +341,16 @@ static void doca_dpdk_build_gre_flow_item(struct doca_dpdk_item_entry *entry,
 }
 
 static int doca_dpdk_modify_gre_key_item(struct doca_dpdk_item_entry *entry,
-					 struct doca_flow_match *match)
+					 struct doca_flow_match *match_spec, struct doca_flow_match *match_mask)
 {
 	uint32_t *spec = &entry->item_data.gre_key.spec;
+	uint32_t *mask = &entry->item_data.gre_key.spec;
 
-	if (match->tun.gre.key)
-		*spec = match->tun.gre.key;
+	if (match_spec->tun.gre.key) {
+		*spec = match_spec->tun.gre.key;
+		if (match_mask)
+			*mask = match_mask->tun.gre.key;
+	}
 	return 0;
 }
 
@@ -377,7 +397,7 @@ static void doca_dpdk_build_end_flow_item(struct doca_dpdk_item_entry *entry)
 }
 
 static int doca_dpdk_modify_tcp_flow_item(struct doca_dpdk_item_entry *entry,
-					  struct doca_flow_match *match)
+					  struct doca_flow_match *match_spec, struct doca_flow_match *match_mask)
 {
 	uint8_t layer = entry->item_data.tcp.match_layer;
 	rte_be16_t src_port = DOCA_GET_SPORT(match, layer);
