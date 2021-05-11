@@ -89,8 +89,8 @@ struct doca_flow_error {
  */
 struct doca_flow_cfg {
 	uint32_t total_sessions;
-	uint16_t
-	    queues; /* each offload thread should use a different queue id */
+	uint16_t queues; /* each offload thread should use a different queue id */
+	uint16_t hairpin_queues;
 	bool aging; /* when true, aging is handled by doca */
 };
 

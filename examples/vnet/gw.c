@@ -30,6 +30,8 @@
 #include "doca_log.h"
 #include "doca_fib.h"
 #include "doca_ft.h"
+#include "simple_fwd.h"
+
 
 DOCA_LOG_MODULE(GW);
 
@@ -105,6 +107,110 @@ struct gw_entry {
 };
 
 struct ex_gw *gw_ins;
+static uint8_t hairpin_queue = 0;
+
+
+struct doca_fib {
+	uint8_t used;
+	uint8_t mac_addr[DOCA_ETHER_ADDR_LEN];
+	uint32_t ipv4_addr;
+};
+
+#define DOCA_FIB_LEN 512
+#define IP_ADDR(a,b,c,d) ((a<<24) + (b<<16) + (c<<8) + d)	
+struct doca_fib doca_nat_table[DOCA_FIB_LEN];
+
+static struct doca_fib* doca_fib_look_up(uint32_t ipaddr)
+{
+	int i;
+
+	for (i = 0; i < DOCA_FIB_LEN; i++) {
+		if (!doca_nat_table[i].used)
+			continue;
+		if (doca_nat_table[i].ipv4_addr == ipaddr)
+			return &doca_nat_table[i];
+	}
+	return NULL;
+}
+
+static void doca_fib_add(struct doca_fib *node)
+{
+	int i = 0;
+	
+	for (i = 0; i < DOCA_FIB_LEN; i++) {
+		if (doca_nat_table[i].used)
+			continue;
+		doca_nat_table[i] = *node;
+		doca_nat_table[i].used = 1;
+		return;
+	}
+}
+
+static void doca_fib_dump(void)
+{
+	int i = 0;
+	struct doca_fib *node;
+
+	printf("n\n#########dump fib info#########\n");
+	for (i = 0; i < DOCA_FIB_LEN; i++) {
+		if (!doca_nat_table[i].used)
+			continue;
+
+		node = &doca_nat_table[i];
+		printf("  %d.%d.%d.%d        %02X:%02X:%02X:%02X:%02X:%02X\n",
+			(node->ipv4_addr >> 24) & 0xFF, (node->ipv4_addr >> 16) & 0xFF,
+			(node->ipv4_addr >> 8) & 0xFF, node->ipv4_addr & 0xFF, 
+			node->mac_addr[0], node->mac_addr[1], node->mac_addr[2],
+			node->mac_addr[3], node->mac_addr[4], node->mac_addr[5]);
+	}
+}
+
+static void init_nat_table(void)
+{
+	struct doca_fib node;
+	uint8_t mac1[6] = {0x1c, 0x2a, 0x13, 0xa0, 0xb1, 0xc1};
+	uint8_t mac2[6] = {0x1c, 0x2a, 0x13, 0xa0, 0xb1, 0xc2};
+	uint8_t mac3[6] = {0x1c, 0x2a, 0x13, 0xa0, 0xb1, 0xc3};
+	uint32_t ip1 = IP_ADDR(17,1,0,1);
+	uint32_t ip2 = IP_ADDR(17,1,0,2);
+	uint32_t ip3 = IP_ADDR(17,1,0,3);
+	uint32_t ip4 = IP_ADDR(17,1,0,4);
+	uint32_t ip5 = IP_ADDR(17,1,0,5);
+	uint32_t ip6 = IP_ADDR(17,1,0,6);
+	uint32_t ip7 = IP_ADDR(17,1,0,7);
+	uint32_t ip8 = IP_ADDR(17,1,0,8);
+	uint32_t ip9 = IP_ADDR(17,1,0,9);
+
+	memset(doca_nat_table, 0x0, sizeof(doca_nat_table));
+
+	memcpy(node.mac_addr, mac1, sizeof(mac1));
+	node.ipv4_addr = ip1;
+	doca_fib_add(&node);
+	node.ipv4_addr = ip2;
+	doca_fib_add(&node);
+	node.ipv4_addr = ip3;
+	doca_fib_add(&node);
+
+	memcpy(node.mac_addr, mac2, sizeof(mac1));
+	node.ipv4_addr = ip4;
+	doca_fib_add(&node);
+	node.ipv4_addr = ip5;
+	doca_fib_add(&node);
+	node.ipv4_addr = ip6;
+	doca_fib_add(&node);
+
+	memcpy(node.mac_addr, mac3, sizeof(mac1));
+	node.ipv4_addr = ip7;
+	doca_fib_add(&node);
+	node.ipv4_addr = ip8;
+	doca_fib_add(&node);
+	node.ipv4_addr = ip9;
+	doca_fib_add(&node);
+
+	doca_fib_dump();
+
+}
+
 
 /**
  * @brief - load balancing between nodes.
@@ -133,9 +239,10 @@ struct doca_flow_fwd *fwd_tbl_port[GW_MAX_PORT_ID];
 
 static struct doca_flow_fwd *gw_build_port_fwd(int port_id)
 {
-        struct doca_flow_fwd *fwd = malloc(sizeof(struct doca_flow_fwd));
-        memset(fwd,0,sizeof(struct doca_flow_fwd));
-        fwd->type = DOCA_FWD_PORT;
+	struct doca_flow_fwd *fwd = malloc(sizeof(struct doca_flow_fwd));
+
+	memset(fwd,0,sizeof(struct doca_flow_fwd));
+	fwd->type = DOCA_FWD_PORT;
 	fwd->port.id = port_id;
 	return fwd;
 }
@@ -206,7 +313,7 @@ static void gw_build_match_tun_and_5tuple(struct doca_flow_match *match)
 static void
 gw_build_decap_inner_modify_actions(struct doca_flow_actions *actions)
 {
-	actions->decap = false;
+	actions->decap = true;
 	actions->mod_dst_ip.a.ipv4_addr = 0xffffffff;
 }
 
@@ -272,7 +379,7 @@ static void gw_fill_monior(struct doca_flow_monitor *monitor)
  *
  * @return
  */
-static struct doca_flow_pipe *gw_build_ul_ol(struct doca_flow_port *port)
+static struct doca_flow_pipe *gw_build_ol_to_ul(struct doca_flow_port *port)
 {
 	struct doca_flow_pipe_cfg pipe_cfg;
 	struct doca_flow_error err = {0};
@@ -428,11 +535,23 @@ static void gw_pipe_set_entry_tun(struct doca_flow_match *match,
  *
  * @return
  */
+
+#define doca_dump_ipv4(name, ipv4_addr)                                         \
+	printf("%s%d.%d.%d.%d\n", name, (ipv4_addr >> 24) & 0xFF,        \
+		      (ipv4_addr >> 16) & 0xFF, (ipv4_addr >> 8) & 0xFF,       \
+		      ipv4_addr & 0xFF)
+
+#define doca_dump_mac(name, eth_addr)                                           \
+	printf("%s%02X:%02X:%02X:%02X:%02X:%02X\n", name, eth_addr[0],   \
+		      eth_addr[1], eth_addr[2], eth_addr[3], eth_addr[4],      \
+		      eth_addr[5])
+
 static struct doca_flow_pipe_entry *
 gw_pipe_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
 			       struct doca_flow_pipe *pipe)
 {
 	struct doca_flow_match match;
+	struct doca_flow_fwd *fwd;
 	struct doca_flow_actions actions = {0};
 	struct doca_flow_monitor monitor = {.m.cbs = GW_DEFAULT_CBS,
 					    .m.cir = GW_DEFAULT_CIR};
@@ -458,9 +577,31 @@ gw_pipe_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
 	actions.mod_dst_ip.a.ipv4_addr =
 	    (doca_pinfo_inner_ipv4_dst(pinfo) & rte_cpu_to_be_32(0x00ffffff)) |
 	    rte_cpu_to_be_32(0x25000000);
+
+{
+	struct doca_fib *node;
+	uint8_t src_mac[6] = {0x2c, 0x1a, 0xb1, 0x11, 0x1b, 0x57};
+	uint32_t ipv4_addr = rte_be_to_cpu_32(doca_pinfo_inner_ipv4_dst(pinfo));
+
+	doca_dump_ipv4("get inner dst ipv4:", ipv4_addr);
+	node = doca_fib_look_up(ipv4_addr);
+	if (node == NULL) {
+		DOCA_LOG_ERR("no mac address for ip ");
+		return NULL;
+	}
+	doca_dump_mac("find dst mac:", node->mac_addr);
+	actions.has_encap = true;
+	memcpy(actions.encap.src_mac, src_mac, sizeof(src_mac));
+	memcpy(actions.encap.dst_mac, node->mac_addr, sizeof(node->mac_addr));
+}
+
+	if (hairpin_queue)
+		fwd = fwd_tbl_port[pinfo->orig_port_id];
+	else
+		fwd = sw_rss_fwd_tbl_port[pinfo->orig_port_id];
+
 	return doca_flow_pipe_add_entry(
-	    0, pipe, &match, &actions, &monitor,
-	    sw_rss_fwd_tbl_port[pinfo->orig_port_id], &err);
+	    0, pipe, &match, &actions, &monitor, fwd, &err);
 }
 
 static struct doca_flow_pipe_entry *
@@ -543,13 +684,16 @@ fail_init:
 	return -1;
 }
 
-static int gw_init_doca_ports_and_pipes(int ret, int nr_queues)
+static int gw_init_doca_ports_and_pipes(int ret, struct sf_port_cfg *port_cfg)
 {
-	struct gw_port_cfg cfg_port0 = {.n_queues = nr_queues, .port_id = 0};
-	struct gw_port_cfg cfg_port1 = {.n_queues = nr_queues, .port_id = 1};
+	struct gw_port_cfg cfg_port0 = {.n_queues = port_cfg->nb_queues, .port_id = 0};
+	struct gw_port_cfg cfg_port1 = {.n_queues = port_cfg->nb_queues, .port_id = 1};
 	struct doca_flow_error err = {0};
-	struct doca_flow_cfg cfg = {.total_sessions = GW_MAX_FLOWS,
-                                    .queues = nr_queues};
+	struct doca_flow_cfg cfg = {
+		.total_sessions = GW_MAX_FLOWS,
+		.queues = port_cfg->nb_queues,
+		.hairpin_queues = port_cfg->nb_hairpinq
+	};
 
 	if (ret)
 		return ret;
@@ -581,14 +725,16 @@ static int gw_init_doca_ports_and_pipes(int ret, int nr_queues)
 
 	/* init pipes */
 	/* overlay to under lay pipe */
-	gw_ins->p_over_under[0] = gw_build_ul_ol(gw_ins->port0);
-	gw_ins->p_over_under[1] = gw_build_ul_ol(gw_ins->port1);
+	gw_ins->p_over_under[0] = gw_build_ol_to_ul(gw_ins->port0);
+	gw_ins->p_over_under[1] = gw_build_ol_to_ul(gw_ins->port1);
 
 	gw_ins->p_ol_ol[0] = gw_build_ol_to_ol(gw_ins->port0);
 	gw_ins->p_ol_ol[1] = gw_build_ol_to_ol(gw_ins->port1);
+
+	if (port_cfg->nb_hairpinq)
+		hairpin_queue = 1;
 	return 0;
 }
-
 static int gw_init_lb(int ret)
 {
 	int i;
@@ -617,17 +763,19 @@ static int gw_init_lb(int ret)
 		doca_add_fib_tbl_entry(gw_ins->gw_fib_tbl, &ip, mac);
 		gw_ins->slb.nodes[i].ip = ip;
 	}
+
+	init_nat_table();
 	return 0;
 }
 
 static int gw_init(void *p)
 {
-	int queues = *((int *)p);
+	struct sf_port_cfg *port_cfg = (struct sf_port_cfg *)p;
 	int ret = 0;
 
 	ret |= gw_create();
 	ret |= gw_init_lb(ret);
-	ret |= gw_init_doca_ports_and_pipes(ret, queues);
+	ret |= gw_init_doca_ports_and_pipes(ret, port_cfg);
 
 	return ret;
 }

@@ -190,7 +190,7 @@ static void doca_dump_raw_encap(const struct rte_flow_action_raw_encap *encap)
     for (i = 0; i < encap->size; i++) {
         doca_log_prefix_buff("%02x", encap->data[i]);
     }
-    doca_log_prefix_buff("\n");
+    doca_log_prefix_buff(",len:%zu\n", encap->size);
 }
 
 static void doca_dump_raw_decap(const struct rte_flow_action_raw_decap *decap)
@@ -341,15 +341,15 @@ void doca_dump_rte_flow(const char *name, uint16_t port_id,
 			decap = (const struct rte_flow_action_raw_decap *)
 					actions->conf;
 
-			doca_dump_raw_decap(decap);
-			doca_log_buff("raw_decap index 0 / "); /*need dump decap buff?*/
+			//doca_dump_raw_decap(decap);
+			doca_log_buff("raw_decap index 0 (len:%zu)/ ", decap->size); /*need dump decap buff?*/
 			break;
 		case RTE_FLOW_ACTION_TYPE_RAW_ENCAP:
 			encap = (const struct rte_flow_action_raw_encap *)
 					actions->conf;
 
-			doca_dump_raw_encap(encap);
-			doca_log_buff("raw_encap index 0 / ");
+			//doca_dump_raw_encap(encap);
+			doca_log_buff("raw_encap index 0 (len:%zu)/ ", encap->size);
 			break;
 		case RTE_FLOW_ACTION_TYPE_DROP:
 			doca_log_buff("drop / ");
@@ -366,9 +366,10 @@ void doca_dump_rte_flow(const char *name, uint16_t port_id,
 			doca_log_buff("not support action:%u /", action_type);
 		}
 	}
+
 	doca_log_buff("end ");
-	DOCA_LOG_DBG("%s\n", prefix_buff);
-	DOCA_LOG_DBG("%s\n", dump_buff);
+	DOCA_LOG_DBG("prefix:%s\n", prefix_buff);
+	DOCA_LOG_DBG("buff:%s\n", dump_buff);
 }
 
 static uint8_t doca_dump_ethhdr(uint8_t *data, uint32_t *len)
@@ -544,6 +545,32 @@ void doca_dump_flow_actions(struct doca_flow_actions *actions)
 	if (actions->mod_dst_port)
 		doca_log_buff("\n    dst-port:0x%x",
 			      rte_be_to_cpu_16(actions->mod_dst_port));
+
+	if (actions->has_encap) {
+		struct doca_flow_encap_action *encap;
+
+		encap = &actions->encap;
+		doca_log_buff("\n    encap info:");
+		doca_log_mac("\n        src-mac:", encap->src_mac);
+		doca_log_mac("\n        dst-mac:", encap->dst_mac);
+		doca_log_ipv4("\n        src-ipv4:",
+		    rte_be_to_cpu_32(encap->src_ip.a.ipv4_addr));
+		doca_log_ipv4("\n        dst-ipv4:",
+		    rte_be_to_cpu_32(encap->dst_ip.a.ipv4_addr));
+		switch (encap->tun.type) {
+		case DOCA_TUN_VXLAN:
+			doca_log_buff("\n        tun-type:vxlan,vni:0x%x",
+				      rte_be_to_cpu_32(encap->tun.vxlan.tun_id));
+			break;
+		case DOCA_TUN_GRE:
+			doca_log_buff("\n        tun-type:gre,key:0x%x",
+				      rte_be_to_cpu_32(encap->tun.gre.key));
+			break;
+		case DOCA_TUN_NONE:
+			doca_log_buff("\n        tun-type:none");
+			break;
+		}
+	}
 	DOCA_LOG_DBG("%s\n", dump_buff);
 }
 

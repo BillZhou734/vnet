@@ -108,8 +108,6 @@ static inline void doca_gauge_check_advance(struct doca_gauge *gauge)
 	if (now <= gauge->next_bin_time)
 		return;
 
-	DOCA_LOG_DBG("gauge advance needed. now %llu next_time_slot %llu", now,
-		     gauge->next_bin_time);
 	/* need to zero all bins at once in this case */
 	if (now - gauge->next_bin_time > gauge->cfg.total_time) {
 		doca_gauge_zero_gauge(gauge);
@@ -118,11 +116,12 @@ static inline void doca_gauge_check_advance(struct doca_gauge *gauge)
 
 	while (now > gauge->next_bin_time) {
 		uint8_t next;
-
+#if 0
 		DOCA_LOG_DBG("advancing current %u current_time %llu total "
 			     "bytes %llu pkts %llu now %llu",
 			     gauge->curr_bin_idx, gauge->next_bin_time,
 			     gauge->total.sum, gauge->total.n, now);
+#endif
 		next = (gauge->curr_bin_idx + 1) % gauge->cfg.n_bins;
 		gauge->sum_of_samples.sum +=
 		    gauge->bin[gauge->curr_bin_idx].sum - gauge->bin[next].sum;
@@ -156,10 +155,6 @@ void doca_gauge_reset(struct doca_gauge *gauge)
 
 void doca_gauge_add_sample(struct doca_gauge *gauge, uint32_t count)
 {
-	DOCA_LOG_DBG("updating gauge. curr slot n %llu sum %llu",
-		     gauge->bin[gauge->curr_bin_idx].n,
-		     gauge->bin[gauge->curr_bin_idx].sum);
-
 	doca_gauge_check_advance(gauge);
 	gauge->bin[gauge->curr_bin_idx].n++;
 	gauge->bin[gauge->curr_bin_idx].sum += count;
@@ -168,10 +163,6 @@ void doca_gauge_add_sample(struct doca_gauge *gauge, uint32_t count)
 void doca_gauge_multi_sample(struct doca_gauge *gauge, uint32_t count,
 			     uint32_t n)
 {
-	DOCA_LOG_DBG("updating gauge. curr slot n %llu sum %llu",
-		     gauge->bin[gauge->curr_bin_idx].n,
-		     gauge->bin[gauge->curr_bin_idx].sum);
-
 	doca_gauge_check_advance(gauge);
 	gauge->bin[gauge->curr_bin_idx].n += n;
 	gauge->bin[gauge->curr_bin_idx].sum += count;

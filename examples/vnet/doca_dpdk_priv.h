@@ -40,8 +40,8 @@ struct doca_flow_pipe {
 	uint32_t id;
 	uint32_t pipe_entry_id;
 	uint32_t nb_pipe_entrys;
-	struct doca_flow_fwd fwd;
-        struct doca_dpdk_pipe flow;
+	struct doca_flow_fwd fwd;/*when pipe create*/
+	struct doca_dpdk_pipe flow;
 	rte_spinlock_t entry_lock;
 	LIST_HEAD(, doca_flow_pipe_entry) entry_list[0];
 };

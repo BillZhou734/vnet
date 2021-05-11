@@ -145,18 +145,17 @@ int sf_start_dpdk_port(struct sf_port_cfg *port)
 			 ":: promiscuous mode enable failed: err=%s, port=%u\n",
 			 rte_strerror(-ret), port_id);
 
-
 	if (port->nb_hairpinq) {
 		for (i = nr_queues, rxq = 0; i < total_queues; i++, rxq++) {
 			hairpin_conf.peers[0].port = peer_port_id;
 			hairpin_conf.peers[0].queue = nr_queues + rxq;
 			hairpin_conf.manual_bind = 1;
 			hairpin_conf.tx_explicit = 1;
-			ret = rte_eth_rx_hairpin_queue_setup(port_id, i, 512, &hairpin_conf);
+			ret = rte_eth_rx_hairpin_queue_setup(port_id, i, port->nb_desc, &hairpin_conf);
 			if (ret != 0)
 				rte_exit(EXIT_FAILURE, "Hairpin rx queue setup failed: err=%d, port=%u\n", ret, port_id);
 
-			ret = rte_eth_tx_hairpin_queue_setup(port_id, i, 512, &hairpin_conf);
+			ret = rte_eth_tx_hairpin_queue_setup(port_id, i, port->nb_desc, &hairpin_conf);
 			if (ret != 0)
 				rte_exit(EXIT_FAILURE, "Hairpin tx queue setup failed: err=%d, port=%u\n", ret, port_id);
 		}

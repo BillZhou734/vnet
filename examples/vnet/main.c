@@ -140,6 +140,7 @@ static int gw_process_pkts(void *p)
 			nb_rx = rte_eth_rx_burst(port_id, queue_id, mbufs,
 						 VNF_RX_BURST_SIZE);
 			for (j = 0; j < nb_rx; j++) {
+				doca_dump_rte_mbuff("", mbufs[j]);
 				if (hw_offload)
 					gw_process_offload(mbufs[j]);
 				if (rx_only)
@@ -314,6 +315,7 @@ int main(int argc, char **argv)
 
 	port_cfg.nb_queues = nr_queues;
 	port_cfg.nb_hairpinq = nr_hairpinq;
+	port_cfg.nb_desc = 512;
 	RTE_ETH_FOREACH_DEV(port_id) {
 		port_cfg.port_id = port_id;
 		sf_start_dpdk_port(&port_cfg);
@@ -321,7 +323,7 @@ int main(int argc, char **argv)
 
 	rte_eth_hairpin_bind(0, 1);
 	rte_eth_hairpin_bind(1, 0);
-	vnf = simple_fwd_get_doca_vnf();
+	vnf = gw_get_doca_vnf();
 	vnf->doca_vnf_init((void *)&port_cfg);
 
 	DOCA_LOG_INFO("VNF initiated!\n");

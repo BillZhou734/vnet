@@ -104,7 +104,7 @@ sf_build_port_fwd(struct sf_port_cfg *port_cfg)
     return fwd;
 }
 
-struct doca_flow_port *
+static struct doca_flow_port *
 sf_init_doca_port(struct sf_port_cfg *port_cfg)
 {
 #define MAX_PORT_STR (128)
@@ -279,7 +279,7 @@ simple_fwd_init(void *p)
 	return ret;
 }
 
-struct doca_flow_pipe_entry *
+static struct doca_flow_pipe_entry *
 sf_pipe_add_entry(struct doca_pkt_info *pinfo,
 			      struct doca_flow_pipe *pipe)
 {

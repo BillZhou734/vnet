@@ -201,7 +201,7 @@ static struct doca_ft_entry *_doca_ft_find(struct doca_ft *ft,
 	struct doca_ft_entry *node;
 
 	idx = key->rss_hash & ft->cfg.mask;
-	DOCA_LOG_DBG("looking for index%d", idx);
+	//DOCA_LOG_DBG("looking for index%d", idx);
 	first = &ft->buckets[idx].head;
 	LIST_FOREACH(node, first, next)
 	{
@@ -257,8 +257,8 @@ bool doca_ft_add_new(struct doca_ft *ft, struct doca_pkt_info *pinfo,
 	new_e->user_ctx.fid = ft->fid_ctr++;
 	*ctx = &new_e->user_ctx;
 
-	DOCA_LOG_DBG("defined new flow %llu",
-		     (unsigned int long long)new_e->user_ctx.fid);
+	//DOCA_LOG_DBG("defined new flow %llu",
+	//	     (unsigned int long long)new_e->user_ctx.fid);
 	memcpy(&new_e->key, &key, sizeof(struct doca_ft_key));
 	idx = pinfo->rss_hash & ft->cfg.mask;
 	first = &ft->buckets[idx].head;

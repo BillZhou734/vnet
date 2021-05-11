@@ -154,6 +154,7 @@ struct doca_dpdk_action_rawencap_data {
 	uint8_t data[128];
 	uint8_t preserve[128];
 	uint16_t idx;
+	uint8_t layer;
 };
 
 struct doca_dpdk_action_meter_data {
@@ -197,6 +198,7 @@ struct doca_dpdk_pipe {
 	uint8_t nb_items;
 	uint8_t nb_actions_pipe;
 	uint8_t nb_actions_entry;
+	uint8_t is_pipe_fwd;
 	uint32_t meter_info; /*profile id = policy id*/
 	struct rte_flow_attr attr;
 	struct rte_flow_item items[MAX_ITEMS];
@@ -217,11 +219,11 @@ struct endecap_layer {
 };
 
 enum DOCA_DECAP_HDR {
-	FILL_ETH_HDR = (1 << 0),
-	FILL_IPV4_HDR = (1 << 1),
-	FILL_UDP_HDR = (1 << 2),
-	FILL_VXLAN_HDR = (1 << 3),
-	FILL_GRE_HDR = (1 << 4),
+	FILL_ETH_HDR = (1 << 1),
+	FILL_IPV4_HDR = (1 << 2),
+	FILL_UDP_HDR = (1 << 3),
+	FILL_VXLAN_HDR = (1 << 4),
+	FILL_GRE_HDR = (1 << 5),
 };
 
 /*need move to util file ??*/
